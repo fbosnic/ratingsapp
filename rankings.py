@@ -1,5 +1,6 @@
 from pathlib import Path
 from re import L
+from unittest.mock import DEFAULT
 import pandas
 import click
 from typing import List
@@ -8,46 +9,42 @@ from typing import List
 CSV_SEPARATOR = ";"
 CSV_LIST_SEPARATOR = "<!>"
 
+DEFAULT_INITIAL_PLAYER_RATING = 2000
+INITIAL_PLAYER_RATING_QUANTILE = 0.3
+
 PLAYERS_DATASET_TAG = "df_players"
 MATCHES_DATASET_TAG = "df_matches"
-RATINGS_DATASET_TAG = "df_ratings"
 RATING_CHANGES_DATASET_TAG = "df_rating_changes"
 
 ROOT_DATA_PATH = Path(__file__).parent / "DATA"
 PLAYER_DATABASE_CSV_PATH = ROOT_DATA_PATH / "players.csv"
 MATCHES_DATABASE_CSV_PATH = ROOT_DATA_PATH  / "matches.csv"
-RATINGS_DATABASE_CSV_PATH = ROOT_DATA_PATH / "ratings.csv"
 RATING_CHANGES_DATABASE_CSV_PATH = ROOT_DATA_PATH / "changes.csv"
 DATABASE_CSV_PATH_DICTIONARY = {
     PLAYERS_DATASET_TAG : PLAYER_DATABASE_CSV_PATH,
     MATCHES_DATASET_TAG: MATCHES_DATABASE_CSV_PATH,
-    RATINGS_DATASET_TAG: RATINGS_DATABASE_CSV_PATH,
     RATING_CHANGES_DATASET_TAG: RATING_CHANGES_DATABASE_CSV_PATH,
 }
 
 PLAYER_DATABASE_INDEX = "player_id"
 MATCHES_DATABASE_INDEX = "match_id"
-RATINGS_DATABASE_INDEX = PLAYER_DATABASE_INDEX
 RATING_CHANGES_DATABASE_INDEX = "rating_change_id"
 DATABASE_INDEX_DICTIONARY = {
     PLAYERS_DATASET_TAG: PLAYER_DATABASE_INDEX,
     MATCHES_DATASET_TAG: MATCHES_DATABASE_INDEX,
-    RATINGS_DATASET_TAG: RATINGS_DATABASE_INDEX,
     RATING_CHANGES_DATASET_TAG: RATING_CHANGES_DATABASE_INDEX,
 }
 
 PLAYER_DATABASE_NAME_COLUMN = "name"
 PLAYER_DATABASE_NICKNAMES_COLUMN = "nicknames"
-PLAYER_DATABASE_NON_INDEX_COLUMNS = [PLAYER_DATABASE_NAME_COLUMN, PLAYER_DATABASE_NICKNAMES_COLUMN]
+PLAYER_DATABASE_RATING_COLUMN = "rating"
+PLAYER_DATABASE_NON_INDEX_COLUMNS = [PLAYER_DATABASE_NAME_COLUMN, PLAYER_DATABASE_NICKNAMES_COLUMN, PLAYER_DATABASE_RATING_COLUMN]
 MATCHES_DATABASE_NON_INDEX_COLUMNS = ["date", "home_team", "away_team", "home_goals", "away_goals"]
 
-RATINGS_DATABASE_RATING_COLUMN = "rating"
-RATINGS_DATABASE_NON_INDEX_COLUMNS = [RATINGS_DATABASE_RATING_COLUMN]
 RATING_CHANGES_DATABASE_NON_INDEX_COLUMNS = ["date", "player_id", "rating_change"]
 DATABASE_NON_INDEX_COLUMNS_DICTIONARY = {
     PLAYERS_DATASET_TAG: PLAYER_DATABASE_NON_INDEX_COLUMNS,
     MATCHES_DATASET_TAG: MATCHES_DATABASE_NON_INDEX_COLUMNS,
-    RATINGS_DATASET_TAG: RATINGS_DATABASE_NON_INDEX_COLUMNS,
     RATING_CHANGES_DATASET_TAG: RATING_CHANGES_DATABASE_NON_INDEX_COLUMNS,
 }
 
@@ -110,7 +107,27 @@ def add_from_records(df_tag, records: List[dict], df, persist_into_database=True
     return df
 
 
+def round_rating(rating):
+    if isinstance(rating, pandas.Series):
+        return rating.round()
+    else:
+        return round(rating)
+
+
 def add_players(player_records: List[dict], df_players=None, persist_into_database=True):
+    if df_players is None:
+        df_players = get_players_df()
+
+    ratings = df_players[PLAYER_DATABASE_RATING_COLUMN]
+    if len(ratings) == 0:
+        initial_rating = DEFAULT_INITIAL_PLAYER_RATING
+    else:
+        initial_rating = round_rating(ratings.quantile(INITIAL_PLAYER_RATING_QUANTILE))
+
+    for record in player_records:
+        if PLAYER_DATABASE_RATING_COLUMN not in record:
+            record[PLAYER_DATABASE_RATING_COLUMN] = initial_rating
+
     return add_from_records(PLAYERS_DATASET_TAG, player_records, df_players, persist_into_database)
 
 
@@ -139,6 +156,8 @@ def player(rating, name, nicknames):
         PLAYER_DATABASE_NAME_COLUMN: name,
         PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join(nicknames),
     }]
+    if rating > 0:
+        player_records[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
     add_players(player_records)
 
 
