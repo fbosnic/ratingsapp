@@ -113,8 +113,11 @@ def add_from_records(df_tag, records: List[dict], df, persist_into_database=True
 def add_players(player_records: List[dict], df_players=None, persist_into_database=True):
     return add_from_records(PLAYERS_DATASET_TAG, player_records, df_players, persist_into_database)
 
-def list_players(df_players):
-    df_players.head()
+
+def list_players(df_players=None):
+    if df_players is None:
+        df_players = get_players_df()
+    click.echo(df_players.head())
 
 
 @click.group()
@@ -151,11 +154,9 @@ def list():
 
 
 @list.command()
-@click.option("--rating", "-r", "rating", default=-1)
-@click.argument("name", nargs=1)
-@click.argument("nicknames", nargs=-1)
-def player(rating, name, nicknames):
-    click.echo("Other command")
+@click.option("--rating/--no-rating", default=False)
+def player(rating):
+    list_players()
 
 
 
