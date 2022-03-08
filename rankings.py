@@ -134,7 +134,7 @@ def add_players(player_records: List[dict], df_players=None, persist_into_databa
 def list_players(df_players=None):
     if df_players is None:
         df_players = get_players_df()
-    click.echo(df_players.head())
+    click.echo(df_players.to_markdown())
 
 
 @click.group()
@@ -154,7 +154,7 @@ def player(rating, name, nicknames):
     '''Adds a new player player with given elo and list of nicknames'''
     player_records = [{
         PLAYER_DATABASE_NAME_COLUMN: name,
-        PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join(nicknames),
+        PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join([nick.lower() for nick in nicknames]),
     }]
     if rating > 0:
         player_records[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
@@ -166,6 +166,8 @@ def remove():
     '''Removes ???'''
 
 
+
+
 @rankings.group()
 def list():
     '''Lists data from the database'''
@@ -174,7 +176,7 @@ def list():
 
 @list.command()
 @click.option("--rating/--no-rating", default=False)
-def player(rating):
+def players(rating):
     list_players()
 
 
