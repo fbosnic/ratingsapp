@@ -49,13 +49,13 @@ DATABASE_NON_INDEX_COLUMNS_DICTIONARY = {
 
 def load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
+    index_column = DATABASE_INDEX_DICTIONARY[df_tag]
     if df_path.exists():
-        df = pandas.read_csv(DATABASE_CSV_PATH_DICTIONARY[df_tag], sep=CSV_SEPARATOR, index_col=DATABASE_INDEX_DICTIONARY[df_tag])
+        df = pandas.read_csv(DATABASE_CSV_PATH_DICTIONARY[df_tag], sep=CSV_SEPARATOR, index_col=index_column)
     else:
-        df_index_name = DATABASE_INDEX_DICTIONARY[df_tag]
         df = pandas.DataFrame(
-            columns=[df_index_name] + DATABASE_NON_INDEX_COLUMNS_DICTIONARY[df_tag])
-        df = df.set_index(df_index_name)
+            columns=[index_column] + DATABASE_NON_INDEX_COLUMNS_DICTIONARY[df_tag])
+        df = df.set_index(index_column)
     return df
 
 
@@ -83,13 +83,13 @@ def get_matches_df():
 def add_from_records(df_tag, records: List[dict], df, persist_into_database=True):
     if df is None:
         df = load_df(df_tag)
-    max_id = df.index.max()
+    index_col = DATABASE_INDEX_DICTIONARY[df_tag]
+    max_id = df.index.max() if len(df.index) > 0 else 0
     new_index = []
 
     for record in records:
         for column_name in DATABASE_NON_INDEX_COLUMNS_DICTIONARY[df_tag]:
             assert column_name in record
-        index_col = DATABASE_INDEX_DICTIONARY[df_tag]
         if index_col in record:
             _record_id = record[index_col]
             assert _record_id not in df.index and _record_id not in new_index
@@ -98,7 +98,7 @@ def add_from_records(df_tag, records: List[dict], df, persist_into_database=True
             max_id += 1
         new_index.append(record[index_col])
 
-    df_new = pandas.DataFrame.from_records(records)
+    df_new = pandas.DataFrame.from_records(records, index=index_col)
     df = pandas.concat([df, df_new], axis=0)
     if persist_into_database:
         save_df(df_tag, df)
