@@ -1,6 +1,4 @@
 from pathlib import Path
-from re import L
-from unittest.mock import DEFAULT
 import pandas
 import click
 from typing import List
@@ -165,7 +163,24 @@ def player(rating, name, nicknames):
 def remove():
     '''Removes ???'''
 
-
+@remove.command()
+@click.argument("identifier", nargs=1)
+def player(identifier):
+    df_players = get_players_df()
+    if identifier.isdigit():
+        id = int(identifier)
+        to_remove_index = df_players.index[df_players.index == id]
+        nr_removed = len(to_remove_index)
+        df_players.drop(to_remove_index, axis=0, inplace=True)
+    elif (df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier).any():
+        to_remove_index = df_players.index[df_players[PLAYER_DATABASE_NAME_COLUMN] != identifier]
+        nr_removed = len(to_remove_index)
+        df_players = df_players.drop(to_remove_index, axis=0)
+    else:
+        return -1
+    set_players_df(df_players)
+    click.echo(f"Removed {nr_removed} players")
+    return 1
 
 
 @rankings.group()
