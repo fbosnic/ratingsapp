@@ -1,14 +1,12 @@
 from pathlib import Path
 import pandas
 import click
+import editdistance
 from typing import List
 
 
 CSV_SEPARATOR = ";"
 CSV_LIST_SEPARATOR = "<!>"
-
-DEFAULT_INITIAL_PLAYER_RATING = 2000
-INITIAL_PLAYER_RATING_QUANTILE = 0.3
 
 PLAYERS_DATASET_TAG = "df_players"
 MATCHES_DATASET_TAG = "df_matches"
@@ -46,6 +44,9 @@ DATABASE_NON_INDEX_COLUMNS_DICTIONARY = {
     RATING_CHANGES_DATASET_TAG: RATING_CHANGES_DATABASE_NON_INDEX_COLUMNS,
 }
 
+DEFAULT_INITIAL_PLAYER_RATING = 2000
+INITIAL_PLAYER_RATING_QUANTILE = 0.3
+STRING_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH = 1.5
 
 def load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
@@ -99,6 +100,7 @@ def add_from_records(df_tag, records: List[dict], df, persist_into_database=True
         new_index.append(record[index_col])
 
     df_new = pandas.DataFrame.from_records(records, index=index_col)
+    df_new.fillna("", inplace=True)
     df = pandas.concat([df, df_new], axis=0)
     if persist_into_database:
         save_df(df_tag, df)
@@ -135,6 +137,57 @@ def list_players(df_players=None):
     click.echo(df_players.to_markdown())
 
 
+def search_pattern_for_players(df_players, query_string):
+    keywords_per_player = df_players.apply(
+        lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN].split(CSV_LIST_SEPARATOR) + player_row[PLAYER_DATABASE_NAME_COLUMN])
+    edlib_distances = keywords_per_player.apply(
+        lambda keywords: min([editdistance.eval(keyword, query_string) for keyword in keywords])
+    )
+    return edlib_distances
+
+
+def is_search_patter_exact(search_pattern):
+    return (STRING_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH * search_pattern.min() > search_pattern).sum() <= 1
+
+
+def remove_players(identifiers):
+    df_players = get_players_df()
+
+    index_identifiers = []
+    name_indentifiers = []
+    remaining_identifiers = []
+    for identifier in identifiers:
+        if identifier.isdigit():
+            index_identifiers.append(int(identifier))
+        elif (df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier).any():
+            name_indentifiers.append(identifier)
+        else:
+            remaining_identifiers.append(identifier)
+
+    remove_by_id = df_players.index[df_players.index.isin(index_identifiers)].to_series()
+    remove_by_name = df_players.index[df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier].to_series()
+
+    remove_by_pattern_matching = pandas.Series([], dtype=int)
+    pattern_issues = []
+    search_patterns = [search_pattern_for_players(df_players, identifier) for identifier in remaining_identifiers]
+    for keyword, search_pattern in zip(remaining_identifiers, search_patterns):
+        if is_search_patter_exact(search_pattern):
+            remove_by_pattern_matching.append(search_pattern.idxmin)
+        else:
+            pattern_issues.append(
+                (keyword, df_players[search_pattern < STRING_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH * search_pattern.min()]))
+
+    remove_indices = pandas.concat([remove_by_id, remove_by_name, remove_by_pattern_matching], axis=0)
+    removed_players = df_players.loc[remove_indices]
+    nr_removed = len(removed_players.index)
+    if nr_removed > 0:
+        df_players.drop(remove_indices, axis=0, inplace=True)
+        set_players_df(df_players)
+        click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
+        click.echo(f"{removed_players.to_markdown()}")
+    else:
+        click.echo(f"Could not find appropriate players to remove")
+
 @click.group()
 def rankings():
     pass
@@ -163,24 +216,11 @@ def player(rating, name, nicknames):
 def remove():
     '''Removes ???'''
 
+
 @remove.command()
-@click.argument("identifier", nargs=1)
-def player(identifier):
-    df_players = get_players_df()
-    if identifier.isdigit():
-        id = int(identifier)
-        to_remove_index = df_players.index[df_players.index == id]
-        nr_removed = len(to_remove_index)
-        df_players.drop(to_remove_index, axis=0, inplace=True)
-    elif (df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier).any():
-        to_remove_index = df_players.index[df_players[PLAYER_DATABASE_NAME_COLUMN] != identifier]
-        nr_removed = len(to_remove_index)
-        df_players = df_players.drop(to_remove_index, axis=0)
-    else:
-        return -1
-    set_players_df(df_players)
-    click.echo(f"Removed {nr_removed} players")
-    return 1
+@click.argument("identifiers", nargs=-1)
+def player(identifiers):
+    remove_players(identifiers)
 
 
 @rankings.group()
@@ -193,7 +233,6 @@ def list():
 @click.option("--rating/--no-rating", default=False)
 def players(rating):
     list_players()
-
 
 
 @rankings.command()
