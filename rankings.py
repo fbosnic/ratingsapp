@@ -46,7 +46,12 @@ DATABASE_NON_INDEX_COLUMNS_DICTIONARY = {
 
 DEFAULT_INITIAL_PLAYER_RATING = 2000
 INITIAL_PLAYER_RATING_QUANTILE = 0.3
-STRING_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH = 1.5
+
+PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH = 1.5
+PATTERN_MATCHING_NO_MATCH_STRING = "NO_MATCH"
+PATTERN_MATCHING_MULTIPLE_MATCHES ="MULTIPLE_MATCHES"
+PATTERN_MATCHING_MAX_DISTANCE = 3
+
 
 def load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
@@ -70,7 +75,9 @@ def save_df(df_tag, df: pandas.DataFrame):
 
 
 def get_players_df():
-    return load_df(PLAYERS_DATASET_TAG)
+    players_df = load_df(PLAYERS_DATASET_TAG)
+    players_df.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = players_df[PLAYER_DATABASE_NICKNAMES_COLUMN].fillna('')
+    return players_df
 
 
 def set_players_df(df_players):
@@ -104,7 +111,7 @@ def add_from_records(df_tag, records: List[dict], df, persist_into_database=True
     df = pandas.concat([df, df_new], axis=0)
     if persist_into_database:
         save_df(df_tag, df)
-    return df
+    return df, df_new
 
 
 def round_rating(rating):
@@ -137,17 +144,38 @@ def list_players(df_players=None):
     click.echo(df_players.to_markdown())
 
 
-def search_pattern_for_players(df_players, query_string):
+def player_search_vector_for_query(df_players, query_string):
     keywords_per_player = df_players.apply(
-        lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN].split(CSV_LIST_SEPARATOR) + player_row[PLAYER_DATABASE_NAME_COLUMN])
+        lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN].split(CSV_LIST_SEPARATOR) + [player_row[PLAYER_DATABASE_NAME_COLUMN]], axis=1)
     edlib_distances = keywords_per_player.apply(
         lambda keywords: min([editdistance.eval(keyword, query_string) for keyword in keywords])
     )
     return edlib_distances
 
 
-def is_search_patter_exact(search_pattern):
-    return (STRING_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH * search_pattern.min() > search_pattern).sum() <= 1
+def is_search_pattern_precise(search_vector):
+    return search_vector.min() <= PATTERN_MATCHING_MAX_DISTANCE
+
+def is_search_vector_exact(search_vector):
+    return (PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH * search_vector.min() > search_vector).sum() <= 1
+
+
+def get_match_from_search_vector(search_vector):
+    return search_vector.index[search_vector.argmin()]
+
+
+def match_queries_to_player_ids(df_players, queries):
+    results = {}
+    for query in queries:
+        search_vector = player_search_vector_for_query(df_players, query)
+        if not is_search_pattern_precise(search_vector):
+            id_to_match = PATTERN_MATCHING_NO_MATCH_STRING
+        elif not is_search_vector_exact(search_vector):
+            id_to_match = PATTERN_MATCHING_MULTIPLE_MATCHES
+        else:
+            id_to_match = get_match_from_search_vector(search_vector)
+        results[query] = id_to_match
+    return results
 
 
 def remove_players(identifiers):
@@ -156,9 +184,14 @@ def remove_players(identifiers):
     index_identifiers = []
     name_indentifiers = []
     remaining_identifiers = []
+    invalid_index_identifiers = []
     for identifier in identifiers:
         if identifier.isdigit():
-            index_identifiers.append(int(identifier))
+            player_id = int(identifier)
+            if player_id in df_players.index:
+                index_identifiers.append(player_id)
+            else:
+                invalid_index_identifiers.append(player_id)
         elif (df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier).any():
             name_indentifiers.append(identifier)
         else:
@@ -167,15 +200,13 @@ def remove_players(identifiers):
     remove_by_id = df_players.index[df_players.index.isin(index_identifiers)].to_series()
     remove_by_name = df_players.index[df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier].to_series()
 
-    remove_by_pattern_matching = pandas.Series([], dtype=int)
-    pattern_issues = []
-    search_patterns = [search_pattern_for_players(df_players, identifier) for identifier in remaining_identifiers]
-    for keyword, search_pattern in zip(remaining_identifiers, search_patterns):
-        if is_search_patter_exact(search_pattern):
-            remove_by_pattern_matching.append(search_pattern.idxmin)
-        else:
-            pattern_issues.append(
-                (keyword, df_players[search_pattern < STRING_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH * search_pattern.min()]))
+    matching_dict = match_queries_to_player_ids(df_players, remaining_identifiers)
+    remove_by_pattern_matching = pandas.Series(
+        [player_id for player_id in matching_dict.values() if player_id not in [PATTERN_MATCHING_MULTIPLE_MATCHES, PATTERN_MATCHING_NO_MATCH_STRING]])
+
+    unrecognized_identifiers, undecided_identifiers = [
+        [identifier for identifier, player_id in matching_dict.items() if player_id == const]
+        for const in [PATTERN_MATCHING_NO_MATCH_STRING, PATTERN_MATCHING_MULTIPLE_MATCHES]]
 
     remove_indices = pandas.concat([remove_by_id, remove_by_name, remove_by_pattern_matching], axis=0)
     removed_players = df_players.loc[remove_indices]
@@ -185,8 +216,14 @@ def remove_players(identifiers):
         set_players_df(df_players)
         click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
         click.echo(f"{removed_players.to_markdown()}")
-    else:
-        click.echo(f"Could not find appropriate players to remove")
+
+    if len(invalid_index_identifiers) > 0:
+        click.echo(f"No players with indices {invalid_index_identifiers} in the database")
+    if len(unrecognized_identifiers) > 0:
+        click.echo(f"Could not match identifiers {unrecognized_identifiers}")
+    if len(undecided_identifiers) > 0:
+        click.echo(f"Multiple players matched identifiers {undecided_identifiers}. Please be more specific or match players by name or id instead")
+
 
 @click.group()
 def rankings():
@@ -198,18 +235,20 @@ def add():
     '''Adds data to the database'''
 
 @add.command()
-@click.option("--rating", "-r", "rating", default=-1)
+@click.option("--rating", "-r", "rating", default=-1, type=int)
 @click.argument("name", nargs=1)
 @click.argument("nicknames", nargs=-1)
 def player(rating, name, nicknames):
     '''Adds a new player player with given elo and list of nicknames'''
-    player_records = [{
+    player_record = {
         PLAYER_DATABASE_NAME_COLUMN: name,
         PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join([nick.lower() for nick in nicknames]),
-    }]
+    }
     if rating > 0:
-        player_records[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
-    add_players(player_records)
+        player_record[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
+    df, df_new = add_players([player_record])
+    click.echo("Added the following player")
+    click.echo(df_new.to_markdown())
 
 
 @rankings.group()
