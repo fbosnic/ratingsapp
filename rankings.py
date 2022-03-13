@@ -241,7 +241,7 @@ def add():
 @click.option("--rating", "-r", "rating", default=-1, type=int, help="Initial ranking for the player")
 @click.argument("name", nargs=1)
 @click.argument("nicknames", nargs=-1)
-def player(rating, name, nicknames):
+def players(rating, name, nicknames):
     '''Creates a new player. Takes player's name as first argument and treats other arguments as player's nicknames.'''
     player_record = {
         PLAYER_DATABASE_NAME_COLUMN: name,
@@ -271,7 +271,7 @@ def remove():
 
 @remove.command()
 @click.argument("identifiers", nargs=-1)
-def player(identifiers):
+def players(identifiers):
     '''Removes players from the database. Takes a list of identifiers which are matched with players' ids, '''\
     '''names and nicknames to find corresponding players.'''
     remove_players(identifiers)
@@ -305,7 +305,7 @@ def update():
 @click.option("--player-id", "-i", "-id", "--id", type=int, required=True)
 @click.option("--column", "-c", type=click.Choice(PLAYER_DATABASE_NON_INDEX_COLUMNS, case_sensitive=False))
 @click.argument("new_value", nargs=1)
-def player(player_id, column_name, new_value):
+def players(player_id, column_name, new_value):
     click.echo("Not implemented!")
 
 
