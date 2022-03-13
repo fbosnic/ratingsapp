@@ -52,6 +52,8 @@ PATTERN_MATCHING_NO_MATCH_STRING = "NO_MATCH"
 PATTERN_MATCHING_MULTIPLE_MATCHES ="MULTIPLE_MATCHES"
 PATTERN_MATCHING_MAX_DISTANCE = 3
 
+TEAM_SEPARTION_STRINGS = ["vs", "vs.", "against", "-", "<>", "<->", ":", "|"]
+
 
 def load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
@@ -232,14 +234,15 @@ def rankings():
 
 @rankings.group()
 def add():
-    '''Adds data to the database'''
+    '''Adds data to the database.'''
+
 
 @add.command()
-@click.option("--rating", "-r", "rating", default=-1, type=int)
+@click.option("--rating", "-r", "rating", default=-1, type=int, help="Initial ranking for the player")
 @click.argument("name", nargs=1)
 @click.argument("nicknames", nargs=-1)
 def player(rating, name, nicknames):
-    '''Adds a new player player with given elo and list of nicknames'''
+    '''Creates a new player. Takes player's name as first argument and treats other arguments as player's nicknames.'''
     player_record = {
         PLAYER_DATABASE_NAME_COLUMN: name,
         PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join([nick.lower() for nick in nicknames]),
@@ -251,38 +254,84 @@ def player(rating, name, nicknames):
     click.echo(df_new.to_markdown())
 
 
+@add.command(help=
+f'''Adds a match to the database. Takes names or nicknames of players as arguments.
+Teams need to be separated by any of the following {TEAM_SEPARTION_STRINGS}.''')
+@click.option("--date", "-d", "date", type=str, default="")
+@click.argument("agrs", nargs=-1)
+def match(date, args):
+    click.echo("Not implemented")
+
+
 @rankings.group()
 def remove():
-    '''Removes ???'''
+    '''Removes data from the database.'''
+    pass
 
 
 @remove.command()
 @click.argument("identifiers", nargs=-1)
 def player(identifiers):
+    '''Removes players from the database. Takes a list of identifiers which are matched with players' ids, '''\
+    '''names and nicknames to find corresponding players.'''
     remove_players(identifiers)
 
 
 @rankings.group()
 def list():
-    '''Lists data from the database'''
+    '''Lists data from the database.'''
     pass
 
 
 @list.command()
 @click.option("--rating/--no-rating", default=False)
 def players(rating):
+    '''Lists all active players.'''
     list_players()
+
+
+@list.command()
+def matches():
+    '''Lists all matches.'''
+    pass
+
+
+@rankings.group(help='''Updates database.''')
+def update():
+    click.echo("Not implemented!")
+
+
+@update.command(help='''Updates player data.''')
+@click.option("--player-id", "-i", "-id", "--id", type=int, required=True)
+@click.option("--column", "-c", type=click.Choice(PLAYER_DATABASE_NON_INDEX_COLUMNS, case_sensitive=False))
+@click.argument("new_value", nargs=1)
+def player(player_id, column_name, new_value):
+    click.echo("Not implemented!")
+
+
+@update.command(help='''Updates match data.''')
+@click.option("--match-id", "-i", "-id", "--id", type=int, required=True)
+@click.option("--column", "-c", type=click.Choice(MATCHES_DATABASE_NON_INDEX_COLUMNS, case_sensitive=False))
+@click.argument("new_value", nargs=1)
+def match(match_id, column_name, new_value):
+    click.echo("Not implemented!")
 
 
 @rankings.command()
 @click.option("--size", "-s", default=5)
-def draft(size):
-    '''Draft teams'''
+@click.argument("players", nargs=-1)
+def draft(team_size, players):
+    '''Separates players into two teams of approximate same rating. Takes names of players as arguments.'''
     pass
 
 
 @rankings.command()
-def score():
+@click.option("--match_id", "-id", type=int, default=-1)
+@click.argument("home_score", nargs=1)
+@click.argument("away_score", nargs=1)
+def score(match_id, home_score, away_score):
+    '''Adds score to one of the non-scored matches and updates rankings of all players participating. '''\
+    '''Takes the score for first ("home") and second ("away") team as arguments.'''
     pass
 
 
