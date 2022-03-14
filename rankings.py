@@ -300,7 +300,7 @@ def add():
 @click.option("--rating", "-r", "rating", default=-1, type=int, help="Initial ranking for the player")
 @click.argument("name", nargs=1)
 @click.argument("nicknames", nargs=-1)
-def players(rating, name, nicknames):
+def player(rating, name, nicknames):
     '''Creates a new player. Takes player's name as first argument and treats other arguments as player's nicknames.'''
     player_record = {
         PLAYER_DATABASE_NAME_COLUMN: name,
