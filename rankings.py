@@ -213,6 +213,12 @@ def list_players(df_players=None):
     click.echo(df_players.to_markdown())
 
 
+def list_matches(df_matches=None):
+    if df_matches is None:
+        df_matches = get_matches_df()
+    click.echo(df_matches.to_markdown())
+
+
 def player_search_vector_for_query(df_players, query_string):
     keywords_per_player = df_players.apply(
         lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN].split(CSV_LIST_SEPARATOR) + [player_row[PLAYER_DATABASE_NAME_COLUMN]], axis=1)
@@ -411,7 +417,7 @@ def players(rating):
 @list.command()
 def matches():
     '''Lists all matches.'''
-    pass
+    list_matches()
 
 
 @rankings.group(help='''Updates database.''')
