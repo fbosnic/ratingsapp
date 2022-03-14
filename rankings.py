@@ -209,7 +209,7 @@ def player_search_vector_for_query(df_players, query_string):
     keywords_per_player = df_players.apply(
         lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN].split(CSV_LIST_SEPARATOR) + [player_row[PLAYER_DATABASE_NAME_COLUMN]], axis=1)
     edlib_distances = keywords_per_player.apply(
-        lambda keywords: min([editdistance.eval(keyword, query_string) for keyword in keywords])
+        lambda keywords: min([editdistance.eval(keyword.lower(), query_string.lower()) for keyword in keywords])
     )
     return edlib_distances
 
