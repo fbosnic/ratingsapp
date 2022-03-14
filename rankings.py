@@ -164,31 +164,39 @@ def add_players(player_records: List[dict], df_players=None, persist_into_databa
     return add_from_records(PLAYERS_DATASET_TAG, player_records, df_players, persist_into_database)
 
 
-def add_matches(match_records: List[dict], df_matches=None, df_players=None, persist_into_databse=True):
+def add_matches(match_records: List[dict], df_matches=None, persist_into_databse=True):
     if df_matches is None:
         df_matches = get_matches_df()
-    if df_players is None:
-        df_players = get_players_df()
 
     for match_record in match_records:
-        home_team_identifiers = match_record[MATCHES_DATABASE_HOME_TEAM_COLUMN]
-        away_team_identifiers = match_record[MATCHES_DATABASE_AWAY_TEAM_COLUMN]
-        assert len(home_team_identifiers) == len(away_team_identifiers)
-        matching_results = match_queries_to_player_ids(df_players, home_team_identifiers + away_team_identifiers)
-        for _, player_id in matching_results.items():
-           assert player_id != PATTERN_MATCHING_MULTIPLE_MATCHES
-           assert player_id != PATTERN_MATCHING_NO_MATCH_STRING
+        home_team_ids = match_record[MATCHES_DATABASE_HOME_TEAM_COLUMN]
+        away_team_ids = match_record[MATCHES_DATABASE_AWAY_TEAM_COLUMN]
+
+        assert len(home_team_ids) == len(away_team_ids)
+        assert len(home_team_ids) == len(home_team_ids)
+        assert len(away_team_ids) == len(away_team_ids)
+        assert not any([id in away_team_ids for id in home_team_ids])
+
         match_record.update({
-            column: CSV_LIST_SEPARATOR.join(f"{matching_results[identifier]}" for identifier in team_identifiers)
-            for column, team_identifiers in [
-                (MATCHES_DATABASE_HOME_TEAM_COLUMN, home_team_identifiers),
-                (MATCHES_DATABASE_AWAY_TEAM_COLUMN), away_team_identifiers]
+            column: CSV_LIST_SEPARATOR.join([f"{id}" for id in team_ids])
+            for column, team_ids in [
+                (MATCHES_DATABASE_HOME_TEAM_COLUMN, home_team_ids),
+                (MATCHES_DATABASE_AWAY_TEAM_COLUMN, away_team_ids)]
                 })
         if MATCHES_DATABASE_HOME_GOALS_COLUMN in match_record and MATCHES_DATABASE_AWAY_GOALS_COLUMN in match_record:
             if MATCHES_DATABASE_DATETIME_COLUMN not in match_record:
                 match_record[MATCHES_DATABASE_DATETIME_COLUMN] = datetime.now()
             adjust_ratings(match_record)
-    return add_from_records(MATCHES_DATASET_TAG, match_record, df_matches, persist_into_database=persist_into_databse)
+        else:
+            match_record.update({
+                MATCHES_DATABASE_HOME_GOALS_COLUMN: None,
+                MATCHES_DATABASE_AWAY_GOALS_COLUMN: None,
+                MATCHES_DATABASE_DATETIME_COLUMN: None
+                })
+    df_matches, df_matches_new = add_from_records(MATCHES_DATASET_TAG, match_records, df_matches, persist_into_database=persist_into_databse)
+    _plural_suffix = "s" if len(df_matches_new) > 0 else ""
+    click.echo(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
+    click.echo(f"{df_matches_new.to_markdown()}")
 
 
 def add_match():
@@ -329,16 +337,44 @@ def match(datetime, args):
                 exit(-331)
             else:
                 teams_spearator_index = index
+    if teams_spearator_index is None:
+        click.echo(f"Could not find teams separator. Please seaparte players in the teams with {TEAM_SEPARTION_STRINGS[0]}")
+        exit(-1141)
     home_team_args = args[:teams_spearator_index]
     away_team_args = args[teams_spearator_index + 1:]
-    if len(home_team_args) != len(away_team_args):
-        click.echo(f"Teams need to have the same size. Found {len(home_team_args)} players for the home team and "\
-            f"{len(away_team_args)} for the away team")
+
+    df_players = get_players_df()
+    matching_results = match_queries_to_player_ids(df_players, home_team_args + away_team_args)
+
+    _multiple_matches = [identifier for identifier, player_id in matching_results.items() if player_id == PATTERN_MATCHING_MULTIPLE_MATCHES]
+    _no_matches = [identifier for identifier, player_id in matching_results.items() if player_id == PATTERN_MATCHING_NO_MATCH_STRING]
+    if len(_no_matches) > 0 or len(_multiple_matches) > 0:
+        if len(_no_matches) > 0:
+            _plural_suffix = "s" if (len(_no_matches) > 1) else ""
+            click.echo(f"Could not match identifier{_plural_suffix} {' '.join(_no_matches)} to player name{_plural_suffix}.")
+        if len(_multiple_matches) > 0:
+            _plural_suffix = "s" if (len(_multiple_matches) > 1) else ""
+            click.echo(f"Found multiple players matching identifier{_plural_suffix} {' '.join(_multiple_matches)}.")
+        exit(-6551)
+
+    home_team_ids_set, away_team_ids_set = [
+        set(matching_results[identifier] for identifier in team_identifiers)
+        for team_identifiers in (home_team_args, away_team_args)]
+
+    duplicate_ids = [id for id in home_team_ids_set if id in away_team_ids_set]
+    if len(duplicate_ids) > 0:
+        _plural_suffix = "s" if len(duplicate_ids) > 0 else ""
+        click.echo(f"Clash, found player{_plural_suffix} {' '.join(duplicate_ids)} in both home and away team")
+        exit(-192)
+
+    if len(home_team_ids_set) != len(away_team_ids_set):
+        click.echo(f"Teams need to have the same number of unique players. Found {len(home_team_ids_set)} unique players for the home team and "\
+            f"{len(away_team_ids_set)} for the away team")
         exit(-431)
 
     match_record = {
-        MATCHES_DATABASE_HOME_TEAM_COLUMN: home_team_args,
-        MATCHES_DATABASE_AWAY_TEAM_COLUMN: away_team_args
+        MATCHES_DATABASE_HOME_TEAM_COLUMN: [e for e in home_team_ids_set],
+        MATCHES_DATABASE_AWAY_TEAM_COLUMN: [e for e in away_team_ids_set]
     }
     if datetime is not None:
         match_record.update(pandas.to_datetime(datetime))
@@ -359,7 +395,7 @@ def players(identifiers):
     remove_players(identifiers)
 
 
-@rankings.group()
+@rankings.group(name="list")
 def list():
     '''Lists data from the database.'''
     pass
