@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 import pandas
 import click
@@ -35,9 +36,26 @@ PLAYER_DATABASE_NAME_COLUMN = "name"
 PLAYER_DATABASE_NICKNAMES_COLUMN = "nicknames"
 PLAYER_DATABASE_RATING_COLUMN = "rating"
 PLAYER_DATABASE_NON_INDEX_COLUMNS = [PLAYER_DATABASE_NAME_COLUMN, PLAYER_DATABASE_NICKNAMES_COLUMN, PLAYER_DATABASE_RATING_COLUMN]
-MATCHES_DATABASE_NON_INDEX_COLUMNS = ["date", "home_team", "away_team", "home_goals", "away_goals"]
+MATCHES_DATABASE_DATETIME_COLUMN = "UTC"
+MATCHES_DATABASE_HOME_TEAM_COLUMN = "home_team"
+MATCHES_DATABASE_AWAY_TEAM_COLUMN = "away_team"
+MATCHES_DATABASE_HOME_GOALS_COLUMN = "home_goals"
+MATCHES_DATABASE_AWAY_GOALS_COLUMN = "away_goals"
+MATCHES_DATABASE_NON_INDEX_COLUMNS = [
+    MATCHES_DATABASE_DATETIME_COLUMN,
+    MATCHES_DATABASE_HOME_TEAM_COLUMN,
+    MATCHES_DATABASE_AWAY_TEAM_COLUMN,
+    MATCHES_DATABASE_HOME_GOALS_COLUMN,
+    MATCHES_DATABASE_AWAY_GOALS_COLUMN]
 
-RATING_CHANGES_DATABASE_NON_INDEX_COLUMNS = ["date", "player_id", "rating_change"]
+RATING_CHANGES_DATABASE_DATETIME_COLUMN = "UTC"
+RATING_CHANGES_PLAYER_ID_COLUMN = "player_id"
+RATING_CHANGES_RATING_CHANGE_COLUMN = "rating_change"
+RATING_CHANGES_DATABASE_NON_INDEX_COLUMNS = [
+    RATING_CHANGES_DATABASE_DATETIME_COLUMN,
+    RATING_CHANGES_PLAYER_ID_COLUMN,
+    RATING_CHANGES_RATING_CHANGE_COLUMN]
+
 DATABASE_NON_INDEX_COLUMNS_DICTIONARY = {
     PLAYERS_DATASET_TAG: PLAYER_DATABASE_NON_INDEX_COLUMNS,
     MATCHES_DATASET_TAG: MATCHES_DATABASE_NON_INDEX_COLUMNS,
@@ -87,7 +105,13 @@ def set_players_df(df_players):
 
 
 def get_matches_df():
-    return load_df(MATCHES_DATASET_TAG)
+    df_matches = load_df(MATCHES_DATASET_TAG)
+    df_matches.loc[:, MATCHES_DATABASE_DATETIME_COLUMN] = pandas.to_datetime(df_matches[MATCHES_DATABASE_DATETIME_COLUMN])
+    return df_matches
+
+
+def set_matches_df(df_matches):
+    save_df(MATCHES_DATASET_TAG, df_matches)
 
 
 def add_from_records(df_tag, records: List[dict], df, persist_into_database=True):
@@ -138,6 +162,41 @@ def add_players(player_records: List[dict], df_players=None, persist_into_databa
             record[PLAYER_DATABASE_RATING_COLUMN] = initial_rating
 
     return add_from_records(PLAYERS_DATASET_TAG, player_records, df_players, persist_into_database)
+
+
+def add_matches(match_records: List[dict], df_matches=None, df_players=None, persist_into_databse=True):
+    if df_matches is None:
+        df_matches = get_matches_df()
+    if df_players is None:
+        df_players = get_players_df()
+
+    for match_record in match_records:
+        home_team_identifiers = match_record[MATCHES_DATABASE_HOME_TEAM_COLUMN]
+        away_team_identifiers = match_record[MATCHES_DATABASE_AWAY_TEAM_COLUMN]
+        assert len(home_team_identifiers) == len(away_team_identifiers)
+        matching_results = match_queries_to_player_ids(df_players, home_team_identifiers + away_team_identifiers)
+        for _, player_id in matching_results.items():
+           assert player_id != PATTERN_MATCHING_MULTIPLE_MATCHES
+           assert player_id != PATTERN_MATCHING_NO_MATCH_STRING
+        match_record.update({
+            column: CSV_LIST_SEPARATOR.join(f"{matching_results[identifier]}" for identifier in team_identifiers)
+            for column, team_identifiers in [
+                (MATCHES_DATABASE_HOME_TEAM_COLUMN, home_team_identifiers),
+                (MATCHES_DATABASE_AWAY_TEAM_COLUMN), away_team_identifiers]
+                })
+        if MATCHES_DATABASE_HOME_GOALS_COLUMN in match_record and MATCHES_DATABASE_AWAY_GOALS_COLUMN in match_record:
+            if MATCHES_DATABASE_DATETIME_COLUMN not in match_record:
+                match_record[MATCHES_DATABASE_DATETIME_COLUMN] = datetime.now()
+            adjust_ratings(match_record)
+    return add_from_records(MATCHES_DATASET_TAG, match_record, df_matches, persist_into_database=persist_into_databse)
+
+
+def add_match():
+    pass
+
+
+def adjust_ratings(match_record):
+    pass
 
 
 def list_players(df_players=None):
@@ -257,10 +316,33 @@ def players(rating, name, nicknames):
 @add.command(help=
 f'''Adds a match to the database. Takes names or nicknames of players as arguments.
 Teams need to be separated by any of the following {TEAM_SEPARTION_STRINGS}.''')
-@click.option("--date", "-d", "date", type=str, default="")
-@click.argument("agrs", nargs=-1)
-def match(date, args):
-    click.echo("Not implemented")
+@click.option("--date", "--datetime", "-d", "datetime", type=str, default=None)
+@click.argument("args", nargs=-1)
+def match(datetime, args):
+    teams_spearator_index = None
+    teams_spearator_string = None
+    for index in range(len(args)):
+        if args[index] in TEAM_SEPARTION_STRINGS:
+            if teams_spearator_index is not None:
+                click.echo(f"Multiple teams separators. Found {teams_spearator_string} as argument "\
+                f"{teams_spearator_index} and {args[index]} as arguments {index}")
+                exit(-331)
+            else:
+                teams_spearator_index = index
+    home_team_args = args[:teams_spearator_index]
+    away_team_args = args[teams_spearator_index + 1:]
+    if len(home_team_args) != len(away_team_args):
+        click.echo(f"Teams need to have the same size. Found {len(home_team_args)} players for the home team and "\
+            f"{len(away_team_args)} for the away team")
+        exit(-431)
+
+    match_record = {
+        MATCHES_DATABASE_HOME_TEAM_COLUMN: home_team_args,
+        MATCHES_DATABASE_AWAY_TEAM_COLUMN: away_team_args
+    }
+    if datetime is not None:
+        match_record.update(pandas.to_datetime(datetime))
+    add_matches([match_record])
 
 
 @rankings.group()
