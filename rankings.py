@@ -1,4 +1,5 @@
 from datetime import datetime
+from email.policy import default
 from pathlib import Path
 import pandas
 import click
@@ -71,7 +72,7 @@ PATTERN_MATCHING_MULTIPLE_MATCHES ="MULTIPLE_MATCHES"
 PATTERN_MATCHING_MAX_DISTANCE = 3
 
 TEAM_SEPARTION_STRINGS = ["vs", "vs.", "against", "-", "<>", "<->", ":", "|"]
-
+REMOVE_NONESSENTIAL_MATCHES_STRING = "all"
 
 def load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
@@ -300,6 +301,52 @@ def remove_players(identifiers):
         click.echo(f"Multiple players matched identifiers {undecided_identifiers}. Please be more specific or match players by name or id instead")
 
 
+def find_essential_matches_mask(df_matches):
+    is_home_goals_nan, is_away_goals_nan = [
+        df_matches.loc[:, column].isna() for column in(MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN)]
+
+    is_match_essential = ~is_home_goals_nan & ~is_away_goals_nan
+    return is_match_essential
+
+
+def remove_matches(match_ids, df_matches=None, is_ignore_warnings=False, persist_into_database=True):
+    if df_matches is None:
+        df_matches = get_matches_df()
+    non_existing_ids, existing_ids = [[] for _ in range(2)]
+    for id in match_ids:
+        if id in df_matches.index:
+            existing_ids.append(id)
+        else:
+            non_existing_ids.append(id)
+    if non_existing_ids:
+        click.echo(f"Indices {non_existing_ids} do not exist in the index.")
+
+    match_ids = existing_ids
+    df_to_remove = df_matches.loc[match_ids].copy()
+    is_essential = find_essential_matches_mask(df_to_remove)
+    essential_indices = df_to_remove.index[is_essential]
+    non_essential_indices = df_to_remove.index[~is_essential]
+
+    df_matches.drop(non_essential_indices, inplace=True)
+    if  len(essential_indices) > 0 or len(non_essential_indices) > 0:
+        if len(df_to_remove.index) > 0:
+            click.echo(f"Removed {len(non_essential_indices)} matches.")
+            click.echo(f"{df_to_remove.loc[non_essential_indices, :].to_markdown()}")
+        if not is_ignore_warnings and len(essential_indices):
+            _plural_suffix = "es" if len(essential_indices) > 2 else ""
+            click.echo(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
+            click.echo(f"{df_to_remove.loc[essential_indices, :].to_markdown()}")
+            if click.confirm("Are you sure you want to delete them?"):
+                df_matches.drop(essential_indices, inplace=True)
+                click.echo(f"Removed {len(essential_indices)} matches.")
+    else:
+        click.echo(f"No matches removed.")
+
+    if persist_into_database:
+        set_matches_df(df_matches)
+    return df_matches, df_to_remove
+
+
 @click.group()
 def rankings():
     pass
@@ -399,6 +446,30 @@ def players(identifiers):
     '''Removes players from the database. Takes a list of identifiers which are matched with players' ids, '''\
     '''names and nicknames to find corresponding players.'''
     remove_players(identifiers)
+
+
+@remove.command(help=
+    '''Removes matches specified by ids given through arguments from the database. You can use '''
+)
+@click.option("--ignore_warnings", "-i", "--ignore", "is_ignore_warnings", type=bool, default=False)
+@click.argument("match_ids", nargs=-1)
+def matches(match_ids, is_ignore_warnings):
+    indices_to_remove_set = set()
+    indices_not_parsed = []
+    df_matches = None
+    for id in match_ids:
+        if id == REMOVE_NONESSENTIAL_MATCHES_STRING:
+            df_matches = get_matches_df()
+            is_essential = find_essential_matches_mask(df_matches)
+            indices_to_remove_set.update(df_matches.index[~is_essential])
+        elif str.isdigit(id):
+            indices_to_remove_set.add(int(id))
+        else:
+            indices_not_parsed.append(id)
+    if len(indices_not_parsed) > 0:
+        click.echo(f"Could not parse {indices_not_parsed} as match indices. Please use integers or '{REMOVE_NONESSENTIAL_MATCHES_STRING}'")
+        exit(-1515)
+    remove_matches([e for e in indices_to_remove_set], df_matches=df_matches, is_ignore_warnings=is_ignore_warnings)
 
 
 @rankings.group(name="list")
