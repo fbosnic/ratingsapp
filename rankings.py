@@ -74,6 +74,7 @@ PATTERN_MATCHING_MAX_DISTANCE = 3
 TEAM_SEPARTION_STRINGS = ["vs", "vs.", "against", "-", "<>", "<->", ":", "|"]
 REMOVE_NONESSENTIAL_MATCHES_STRING = "all"
 
+
 def load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
     index_column = DATABASE_INDEX_DICTIONARY[df_tag]
@@ -115,6 +116,14 @@ def set_matches_df(df_matches):
     save_df(MATCHES_DATASET_TAG, df_matches)
 
 
+def get_rating_changes_df():
+    return load_df(RATING_CHANGES_DATASET_TAG)
+
+
+def set_rating_changes_df(df_rating_changes):
+    save_df(RATING_CHANGES_DATASET_TAG, df_rating_changes)
+
+
 def add_from_records(df_tag, records: List[dict], df, persist_into_database=True):
     if df is None:
         df = load_df(df_tag)
@@ -148,6 +157,20 @@ def round_rating(rating):
         return round(rating)
 
 
+def update_multiple_player_ratings(player_ids, rating_changes):
+    UTC = datetime.now()
+    rating_changes_records = [{
+            RATING_CHANGES_PLAYER_ID_COLUMN: player_id,
+            RATING_CHANGES_RATING_CHANGE_COLUMN: rating_change,
+            RATING_CHANGES_DATABASE_DATETIME_COLUMN: UTC,
+    } for player_id, rating_change in zip(player_ids, rating_changes)]
+    return add_from_records(RATING_CHANGES_DATASET_TAG, rating_changes_records, get_rating_changes_df())
+
+
+def update_player_rating(player_id, rating_changes):
+    return update_multiple_player_ratings([player_id], [rating_changes])
+
+
 def add_players(player_records: List[dict], df_players=None, persist_into_database=True):
     if df_players is None:
         df_players = get_players_df()
@@ -162,7 +185,10 @@ def add_players(player_records: List[dict], df_players=None, persist_into_databa
         if PLAYER_DATABASE_RATING_COLUMN not in record:
             record[PLAYER_DATABASE_RATING_COLUMN] = initial_rating
 
-    return add_from_records(PLAYERS_DATASET_TAG, player_records, df_players, persist_into_database)
+    df , df_new_players = add_from_records(PLAYERS_DATASET_TAG, player_records, df_players, persist_into_database)
+    update_multiple_player_ratings(df_new_players.index, df_new_players[PLAYER_DATABASE_RATING_COLUMN])
+
+    return df, df_new_players
 
 
 def add_matches(match_records: List[dict], df_matches=None, persist_into_databse=True):
@@ -218,6 +244,12 @@ def list_matches(df_matches=None):
     if df_matches is None:
         df_matches = get_matches_df()
     click.echo(df_matches.to_markdown())
+
+
+def list_rating_changes(df_rating_changes=None):
+    if df_rating_changes is None:
+        df_rating_changes = get_rating_changes_df()
+    click.echo(df_rating_changes.to_markdown())
 
 
 def player_search_vector_for_query(df_players, query_string):
@@ -489,6 +521,12 @@ def players(rating):
 def matches():
     '''Lists all matches.'''
     list_matches()
+
+
+@list.command()
+def history():
+    '''Lists all cahnges in ratings.'''
+    list_rating_changes()
 
 
 @rankings.group(help='''Updates database.''')
