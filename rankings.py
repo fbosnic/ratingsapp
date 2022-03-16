@@ -1,10 +1,10 @@
 from datetime import datetime
-from email.policy import default
 from pathlib import Path
 import pandas
 import click
 import editdistance
 from typing import List
+import math
 
 
 CSV_SEPARATOR = ";"
@@ -65,6 +65,8 @@ DATABASE_NON_INDEX_COLUMNS_DICTIONARY = {
 
 DEFAULT_INITIAL_PLAYER_RATING = 2000
 INITIAL_PLAYER_RATING_QUANTILE = 0.3
+DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER = 400
+DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT = 5
 
 PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH = 1.5
 PATTERN_MATCHING_NO_MATCH_STRING = "NO_MATCH"
@@ -191,7 +193,7 @@ def add_players(player_records: List[dict], df_players=None, persist_into_databa
     return df, df_new_players
 
 
-def add_matches(match_records: List[dict], df_matches=None, persist_into_databse=True):
+def add_matches(match_records: List[dict], df_matches=None, df_players=None, persist_into_databse=True):
     if df_matches is None:
         df_matches = get_matches_df()
 
@@ -213,7 +215,7 @@ def add_matches(match_records: List[dict], df_matches=None, persist_into_databse
         if MATCHES_DATABASE_HOME_GOALS_COLUMN in match_record and MATCHES_DATABASE_AWAY_GOALS_COLUMN in match_record:
             if MATCHES_DATABASE_DATETIME_COLUMN not in match_record:
                 match_record[MATCHES_DATABASE_DATETIME_COLUMN] = datetime.now()
-            adjust_ratings(match_record)
+            adjust_player_ratings(match_record, df_players)
         else:
             match_record.update({
                 MATCHES_DATABASE_HOME_GOALS_COLUMN: None,
@@ -226,12 +228,57 @@ def add_matches(match_records: List[dict], df_matches=None, persist_into_databse
     click.echo(f"{df_matches_new.to_markdown()}")
 
 
-def add_match():
-    pass
+def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
+                              rating_diff_twice_as_good=DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER,
+                              nr_1_0_wins_needed_to_get_twice_as_good=DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT):
+    exponent_scale_factor = math.log(2) / rating_diff_twice_as_good
+    _intermediate_exp = math.exp((away_rating - home_rating) * exponent_scale_factor)
+    home_win_prob = 1 / (1 + _intermediate_exp)
+    away_win_prob = 1 - home_win_prob
+
+    if home_goals > away_goals:
+        home_gradient = away_win_prob
+        away_gradient = -away_win_prob
+    elif home_goals == away_goals:
+        home_gradient = (away_win_prob - home_win_prob) / 2
+        away_gradient = (home_win_prob - away_win_prob) / 2
+    elif home_goals < away_goals:
+        home_gradient = -home_win_prob
+        away_gradient = home_win_prob
+    home_gradient *= exponent_scale_factor
+    away_gradient *= exponent_scale_factor
+
+    score_modifier = min(3, abs(home_goals - away_goals))
+    rating_adjustment_modifier = rating_diff_twice_as_good / nr_1_0_wins_needed_to_get_twice_as_good
+    home_rating_adjustment, away_rating_adjustment = [
+        round_rating(gradient * rating_adjustment_modifier * score_modifier) for gradient in [home_gradient, away_gradient]]
+    return home_rating_adjustment, away_rating_adjustment
 
 
-def adjust_ratings(match_record):
-    pass
+def adjust_player_ratings(match_record, df_players=None):
+    if df_players is None:
+        df_players = get_players_df()
+
+    df_home_players, df_away_players = [
+        df_players.loc[match_record[column_name]]
+        for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN]]
+
+    total_home_rating, total_away_rating = [_df[PLAYER_DATABASE_RATING_COLUMN].mean() for _df in [df_home_players, df_away_players]]
+    home_goals, away_goals = [match_record[score_column] for score_column in [MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN]]
+
+    home_rating_adjustment, away_rating_adjustment = compute_rating_adjustment(total_home_rating, total_away_rating, home_goals, away_goals)
+
+    home_adjustments, away_adjustments = [
+        df_home_players.apply(lambda _: rating_adjustment, axis=1)
+        for rating_adjustment in [home_rating_adjustment, away_rating_adjustment]]
+
+    for _df, _adjustments in [(df_home_players, home_adjustments), (df_away_players, away_adjustments)]:
+        update_multiple_player_ratings(_df.index, _adjustments)
+
+    adjustments = pandas.concat(home_adjustments, away_adjustments)
+    df_players.loc[adjustments.index, PLAYER_DATABASE_RATING_COLUMN] += adjustments
+    set_players_df(df_players)
+    return adjustments
 
 
 def list_players(df_players=None):
