@@ -5,6 +5,7 @@ import click
 import editdistance
 from typing import List
 import math
+import itertools
 
 
 CSV_SEPARATOR = ";"
@@ -68,6 +69,7 @@ INITIAL_PLAYER_RATING_QUANTILE = 0.3
 DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER = 400
 DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT = 5
 
+PLAYER_IDENTIFICATION_NOT_IN_INDEX ="NOT_IN_INDEX"
 PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH = 1.5
 PATTERN_MATCHING_NO_MATCH_STRING = "NO_MATCH"
 PATTERN_MATCHING_MULTIPLE_MATCHES ="MULTIPLE_MATCHES"
@@ -342,7 +344,7 @@ def get_match_from_search_vector(search_vector):
     return search_vector.index[search_vector.argmin()]
 
 
-def match_queries_to_player_ids(df_players, queries):
+def _match_queries_to_player_ids(df_players, queries):
     results = {}
     for query in queries:
         search_vector = player_search_vector_for_query(df_players, query)
@@ -355,42 +357,50 @@ def match_queries_to_player_ids(df_players, queries):
         results[query] = id_to_match
     return results
 
+def identify_players(identifiers, df_players=None):
+    if df_players is None:
+        df_players = get_players_df()
 
-def remove_players(identifiers):
-    df_players = get_players_df()
-
-    index_identifiers = []
-    name_indentifiers = []
+    identification_dict = {}
     remaining_identifiers = []
-    invalid_index_identifiers = []
     for identifier in identifiers:
         if identifier.isdigit():
-            player_id = int(identifier)
-            if player_id in df_players.index:
-                index_identifiers.append(player_id)
+            if int(identifier) in df_players.index:
+                player_id = int(identifier)
             else:
-                invalid_index_identifiers.append(player_id)
-        elif (df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier).any():
-            name_indentifiers.append(identifier)
+                player_id = PLAYER_IDENTIFICATION_NOT_IN_INDEX
         else:
-            remaining_identifiers.append(identifier)
+            _search_by_name = df_players.index[df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier]
+            if len(_search_by_name) == 1:
+                player_id = _search_by_name[0]
+            else:
+                remaining_identifiers.append(identifier)
+                continue
+        identification_dict[identifier] = player_id
 
-    remove_by_id = df_players.index[df_players.index.isin(index_identifiers)].to_series()
-    remove_by_name = df_players.index[df_players[PLAYER_DATABASE_NAME_COLUMN] == identifier].to_series()
+    pattern_matching_dict = _match_queries_to_player_ids(df_players, remaining_identifiers)
+    identification_dict.update(pattern_matching_dict)
 
-    matching_dict = match_queries_to_player_ids(df_players, remaining_identifiers)
-    remove_by_pattern_matching = pandas.Series(
-        [player_id for player_id in matching_dict.values() if player_id not in [PATTERN_MATCHING_MULTIPLE_MATCHES, PATTERN_MATCHING_NO_MATCH_STRING]])
+    return identification_dict
 
-    unrecognized_identifiers, undecided_identifiers = [
-        [identifier for identifier, player_id in matching_dict.items() if player_id == const]
-        for const in [PATTERN_MATCHING_NO_MATCH_STRING, PATTERN_MATCHING_MULTIPLE_MATCHES]]
+def remove_players(identifiers, df_players=None):
+    identification_dict = identify_players(identifiers, df_players)
 
-    remove_indices = pandas.concat([remove_by_id, remove_by_name, remove_by_pattern_matching], axis=0)
-    removed_players = df_players.loc[remove_indices]
+    ids_to_remove, invalid_index_identifiers, unrecognized_identifiers, undecided_identifiers = [[] for _ in range(4)]
+    for identifier, id in identification_dict.items():
+        if id == PLAYER_IDENTIFICATION_NOT_IN_INDEX:
+            invalid_index_identifiers.append(identifier)
+        elif id == PATTERN_MATCHING_NO_MATCH_STRING:
+            unrecognized_identifiers.append(identifier)
+        elif id == PATTERN_MATCHING_MULTIPLE_MATCHES:
+            undecided_identifiers.append(identifier)
+        else:
+            ids_to_remove.append(id)
+
+    removed_players = df_players.loc[ids_to_remove]
     nr_removed = len(removed_players.index)
     if nr_removed > 0:
-        df_players.drop(remove_indices, axis=0, inplace=True)
+        df_players.drop(ids_to_remove, axis=0, inplace=True)
         set_players_df(df_players)
         click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
         click.echo(f"{removed_players.to_markdown()}")
@@ -499,10 +509,9 @@ def match(datetime, args):
     away_team_args = args[teams_spearator_index + 1:]
 
     df_players = get_players_df()
-    matching_results = match_queries_to_player_ids(df_players, home_team_args + away_team_args)
-
-    _multiple_matches = [identifier for identifier, player_id in matching_results.items() if player_id == PATTERN_MATCHING_MULTIPLE_MATCHES]
-    _no_matches = [identifier for identifier, player_id in matching_results.items() if player_id == PATTERN_MATCHING_NO_MATCH_STRING]
+    identification_dict = identify_players(home_team_args + away_team_args, df_players)
+    _multiple_matches = [identifier for identifier, player_id in identification_dict.items() if player_id == PATTERN_MATCHING_MULTIPLE_MATCHES]
+    _no_matches = [identifier for identifier, player_id in identification_dict.items() if player_id == PATTERN_MATCHING_NO_MATCH_STRING]
     if len(_no_matches) > 0 or len(_multiple_matches) > 0:
         if len(_no_matches) > 0:
             _plural_suffix = "s" if (len(_no_matches) > 1) else ""
@@ -513,7 +522,7 @@ def match(datetime, args):
         exit(-6551)
 
     home_team_ids_set, away_team_ids_set = [
-        set(matching_results[identifier] for identifier in team_identifiers)
+        set(identification_dict[identifier] for identifier in team_identifiers)
         for team_identifiers in (home_team_args, away_team_args)]
 
     duplicate_ids = [id for id in home_team_ids_set if id in away_team_ids_set]
