@@ -448,7 +448,7 @@ def add_match_command(datetime, args):
     duplicate_ids = [id for id in home_team_ids_set if id in away_team_ids_set]
     if len(duplicate_ids) > 0:
         _plural_suffix = "s" if len(duplicate_ids) > 0 else ""
-        click.echo(f"Clash, found player{_plural_suffix} {' '.join(duplicate_ids)} in both home and away team")
+        click.echo(f"Clash, found player{_plural_suffix} {' '.join([str(id) for id in duplicate_ids])} in both home and away team")
         exit(-192)
 
     if len(home_team_ids_set) != len(away_team_ids_set):
