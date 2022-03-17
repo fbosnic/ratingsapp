@@ -241,23 +241,6 @@ def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=No
     return match_record, adjustments
 
 
-def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_players=None):
-    if df_matches is None:
-        df_matches = get_matches_df()
-
-    if match_id not in df_matches.index:
-        click.echo(f"Match with id {match_id} does not exist")
-        exit(-190)
-
-    if find_essential_matches_mask(df_matches).loc[match_id]:
-        click.echo(f"Match with id {match_id} has already been scored and can't be scored again.")
-        return
-    else:
-        match_record, adjustments = score_match(match_id, home_goals, away_goals, df_matches, df_players)
-        click.echo(f"Updates score for match {match_id}: {match_record[MATCHES_DATABASE_HOME_GOALS_COLUMN]}-{match_record[MATCHES_DATABASE_AWAY_GOALS_COLUMN]}.")
-        click.echo(f"Rating changes:\n{adjustments}")
-
-
 def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
                               rating_diff_twice_as_good=DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER,
                               nr_1_0_wins_needed_to_get_twice_as_good=DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT):
@@ -309,24 +292,6 @@ def adjust_player_ratings(match_record, df_players=None):
     df_players.loc[adjustments.index, PLAYER_DATABASE_RATING_COLUMN] += adjustments
     set_players_df(df_players)
     return adjustments
-
-
-def list_players_command(df_players=None):
-    if df_players is None:
-        df_players = get_players_df()
-    click.echo(df_players.to_markdown())
-
-
-def list_matches_command(df_matches=None):
-    if df_matches is None:
-        df_matches = get_matches_df()
-    click.echo(df_matches.to_markdown())
-
-
-def list_rating_changes_command(df_rating_changes=None):
-    if df_rating_changes is None:
-        df_rating_changes = get_rating_changes_df()
-    click.echo(df_rating_changes.to_markdown())
 
 
 def player_search_vector_for_query(df_players, query_string):
@@ -409,22 +374,6 @@ def remove_players(identifiers, df_players=None):
     return removed_players, invalid_index_identifiers, unrecognized_identifiers, undecided_identifiers
 
 
-def remove_players_command(identifiers, df_players=None):
-    removed_players, invalid_index_identifiers, unrecognized_identifiers, undecided_identifiers = remove_players(identifiers, df_players)
-
-    nr_removed = len(removed_players.index)
-    if nr_removed > 0:
-        click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
-        click.echo(f"{removed_players.to_markdown()}")
-
-    if len(invalid_index_identifiers) > 0:
-        click.echo(f"No players with indices {invalid_index_identifiers} in the database")
-    if len(unrecognized_identifiers) > 0:
-        click.echo(f"Could not match identifiers {unrecognized_identifiers}")
-    if len(undecided_identifiers) > 0:
-        click.echo(f"Multiple players matched identifiers {undecided_identifiers}. Please be more specific or match players by name or id instead")
-
-
 def find_essential_matches_mask(df_matches):
     is_home_goals_nan, is_away_goals_nan = [
         df_matches.loc[:, column].isna() for column in(MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN)]
@@ -446,6 +395,57 @@ def remove_matches(match_ids, df_matches=None, is_remove_essential=False, is_per
     if is_persist_into_database:
         set_matches_df(df_matches)
     return df_matches, df_removed
+
+
+def list_players_command(df_players=None):
+    if df_players is None:
+        df_players = get_players_df()
+    click.echo(df_players.to_markdown())
+
+
+def list_matches_command(df_matches=None):
+    if df_matches is None:
+        df_matches = get_matches_df()
+    click.echo(df_matches.to_markdown())
+
+
+def list_rating_changes_command(df_rating_changes=None):
+    if df_rating_changes is None:
+        df_rating_changes = get_rating_changes_df()
+    click.echo(df_rating_changes.to_markdown())
+
+
+def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_players=None):
+    if df_matches is None:
+        df_matches = get_matches_df()
+
+    if match_id not in df_matches.index:
+        click.echo(f"Match with id {match_id} does not exist")
+        exit(-190)
+
+    if find_essential_matches_mask(df_matches).loc[match_id]:
+        click.echo(f"Match with id {match_id} has already been scored and can't be scored again.")
+        return
+    else:
+        match_record, adjustments = score_match(match_id, home_goals, away_goals, df_matches, df_players)
+        click.echo(f"Updates score for match {match_id}: {match_record[MATCHES_DATABASE_HOME_GOALS_COLUMN]}-{match_record[MATCHES_DATABASE_AWAY_GOALS_COLUMN]}.")
+        click.echo(f"Rating changes:\n{adjustments}")
+
+
+def remove_players_command(identifiers, df_players=None):
+    removed_players, invalid_index_identifiers, unrecognized_identifiers, undecided_identifiers = remove_players(identifiers, df_players)
+
+    nr_removed = len(removed_players.index)
+    if nr_removed > 0:
+        click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
+        click.echo(f"{removed_players.to_markdown()}")
+
+    if len(invalid_index_identifiers) > 0:
+        click.echo(f"No players with indices {invalid_index_identifiers} in the database")
+    if len(unrecognized_identifiers) > 0:
+        click.echo(f"Could not match identifiers {unrecognized_identifiers}")
+    if len(undecided_identifiers) > 0:
+        click.echo(f"Multiple players matched identifiers {undecided_identifiers}. Please be more specific or match players by name or id instead")
 
 
 def remove_matches_command(match_ids, df_matches=None, is_ignore_warnings=False):
