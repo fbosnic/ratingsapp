@@ -397,6 +397,75 @@ def remove_matches(match_ids, df_matches=None, is_remove_essential=False, is_per
     return df_matches, df_removed
 
 
+def add_player_command(rating, name, nicknames):
+    player_record = {
+        PLAYER_DATABASE_NAME_COLUMN: name,
+        PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join([nick.lower() for nick in nicknames]),
+    }
+    if rating > 0:
+        player_record[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
+    df, df_new = add_players([player_record])
+    click.echo("Added the following player")
+    click.echo(df_new.to_markdown())
+
+
+def add_match_command(match_ids, args):
+    teams_spearator_index = None
+    teams_spearator_string = None
+    for index in range(len(args)):
+        if args[index] in TEAM_SEPARTION_STRINGS:
+            if teams_spearator_index is not None:
+                click.echo(f"Multiple teams separators. Found {teams_spearator_string} as argument "\
+                f"{teams_spearator_index} and {args[index]} as arguments {index}")
+                exit(-331)
+            else:
+                teams_spearator_index = index
+    if teams_spearator_index is None:
+        click.echo(f"Could not find teams separator. Please seaparte players in the teams with {TEAM_SEPARTION_STRINGS[0]}")
+        exit(-1141)
+    home_team_args = args[:teams_spearator_index]
+    away_team_args = args[teams_spearator_index + 1:]
+
+    df_players = get_players_df()
+    identification_dict = identify_players(home_team_args + away_team_args, df_players)
+    _multiple_matches = [identifier for identifier, player_id in identification_dict.items() if player_id == PATTERN_MATCHING_MULTIPLE_MATCHES]
+    _no_matches = [identifier for identifier, player_id in identification_dict.items() if player_id == PATTERN_MATCHING_NO_MATCH_STRING]
+    if len(_no_matches) > 0 or len(_multiple_matches) > 0:
+        if len(_no_matches) > 0:
+            _plural_suffix = "s" if (len(_no_matches) > 1) else ""
+            click.echo(f"Could not match identifier{_plural_suffix} {' '.join(_no_matches)} to player name{_plural_suffix}.")
+        if len(_multiple_matches) > 0:
+            _plural_suffix = "s" if (len(_multiple_matches) > 1) else ""
+            click.echo(f"Found multiple players matching identifier{_plural_suffix} {' '.join(_multiple_matches)}.")
+        exit(-6551)
+
+    home_team_ids_set, away_team_ids_set = [
+        set(identification_dict[identifier] for identifier in team_identifiers)
+        for team_identifiers in (home_team_args, away_team_args)]
+
+    duplicate_ids = [id for id in home_team_ids_set if id in away_team_ids_set]
+    if len(duplicate_ids) > 0:
+        _plural_suffix = "s" if len(duplicate_ids) > 0 else ""
+        click.echo(f"Clash, found player{_plural_suffix} {' '.join(duplicate_ids)} in both home and away team")
+        exit(-192)
+
+    if len(home_team_ids_set) != len(away_team_ids_set):
+        click.echo(f"Teams need to have the same number of unique players. Found {len(home_team_ids_set)} unique players for the home team and "\
+            f"{len(away_team_ids_set)} for the away team")
+        exit(-431)
+
+    match_record = {
+        MATCHES_DATABASE_HOME_TEAM_COLUMN: [e for e in home_team_ids_set],
+        MATCHES_DATABASE_AWAY_TEAM_COLUMN: [e for e in away_team_ids_set]
+    }
+    if datetime is not None:
+        match_record.update(pandas.to_datetime(datetime))
+    df_matches, df_matches_new = add_matches([match_record])
+    _plural_suffix = "s" if len(df_matches_new) > 0 else ""
+    click.echo(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
+    click.echo(f"{df_matches_new.to_markdown()}")
+
+
 def list_players_command(df_players=None):
     if df_players is None:
         df_players = get_players_df()
@@ -500,16 +569,7 @@ def add():
 @click.argument("nicknames", nargs=-1)
 def player(rating, name, nicknames):
     '''Creates a new player. Takes player's name as first argument and treats other arguments as player's nicknames.'''
-    player_record = {
-        PLAYER_DATABASE_NAME_COLUMN: name,
-        PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join([nick.lower() for nick in nicknames]),
-    }
-    if rating > 0:
-        player_record[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
-    df, df_new = add_players([player_record])
-    click.echo("Added the following player")
-    click.echo(df_new.to_markdown())
-
+    add_player_command(rating, name, nicknames)
 
 @add.command(help=
 f'''Adds a match to the database. Takes names or nicknames of players as arguments.
@@ -517,60 +577,7 @@ Teams need to be separated by any of the following {TEAM_SEPARTION_STRINGS}.''')
 @click.option("--date", "--datetime", "-d", "datetime", type=str, default=None)
 @click.argument("args", nargs=-1)
 def match(datetime, args):
-    teams_spearator_index = None
-    teams_spearator_string = None
-    for index in range(len(args)):
-        if args[index] in TEAM_SEPARTION_STRINGS:
-            if teams_spearator_index is not None:
-                click.echo(f"Multiple teams separators. Found {teams_spearator_string} as argument "\
-                f"{teams_spearator_index} and {args[index]} as arguments {index}")
-                exit(-331)
-            else:
-                teams_spearator_index = index
-    if teams_spearator_index is None:
-        click.echo(f"Could not find teams separator. Please seaparte players in the teams with {TEAM_SEPARTION_STRINGS[0]}")
-        exit(-1141)
-    home_team_args = args[:teams_spearator_index]
-    away_team_args = args[teams_spearator_index + 1:]
-
-    df_players = get_players_df()
-    identification_dict = identify_players(home_team_args + away_team_args, df_players)
-    _multiple_matches = [identifier for identifier, player_id in identification_dict.items() if player_id == PATTERN_MATCHING_MULTIPLE_MATCHES]
-    _no_matches = [identifier for identifier, player_id in identification_dict.items() if player_id == PATTERN_MATCHING_NO_MATCH_STRING]
-    if len(_no_matches) > 0 or len(_multiple_matches) > 0:
-        if len(_no_matches) > 0:
-            _plural_suffix = "s" if (len(_no_matches) > 1) else ""
-            click.echo(f"Could not match identifier{_plural_suffix} {' '.join(_no_matches)} to player name{_plural_suffix}.")
-        if len(_multiple_matches) > 0:
-            _plural_suffix = "s" if (len(_multiple_matches) > 1) else ""
-            click.echo(f"Found multiple players matching identifier{_plural_suffix} {' '.join(_multiple_matches)}.")
-        exit(-6551)
-
-    home_team_ids_set, away_team_ids_set = [
-        set(identification_dict[identifier] for identifier in team_identifiers)
-        for team_identifiers in (home_team_args, away_team_args)]
-
-    duplicate_ids = [id for id in home_team_ids_set if id in away_team_ids_set]
-    if len(duplicate_ids) > 0:
-        _plural_suffix = "s" if len(duplicate_ids) > 0 else ""
-        click.echo(f"Clash, found player{_plural_suffix} {' '.join(duplicate_ids)} in both home and away team")
-        exit(-192)
-
-    if len(home_team_ids_set) != len(away_team_ids_set):
-        click.echo(f"Teams need to have the same number of unique players. Found {len(home_team_ids_set)} unique players for the home team and "\
-            f"{len(away_team_ids_set)} for the away team")
-        exit(-431)
-
-    match_record = {
-        MATCHES_DATABASE_HOME_TEAM_COLUMN: [e for e in home_team_ids_set],
-        MATCHES_DATABASE_AWAY_TEAM_COLUMN: [e for e in away_team_ids_set]
-    }
-    if datetime is not None:
-        match_record.update(pandas.to_datetime(datetime))
-    df_matches, df_matches_new = add_matches([match_record])
-    _plural_suffix = "s" if len(df_matches_new) > 0 else ""
-    click.echo(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
-    click.echo(f"{df_matches_new.to_markdown()}")
+    add_match_command(datetime, args)
 
 
 @rankings.group()
