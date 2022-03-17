@@ -78,7 +78,7 @@ TEAM_SEPARTION_STRINGS = ["vs", "vs.", "against", "-", "<>", "<->", ":", "|"]
 REMOVE_NONESSENTIAL_MATCHES_STRING = "all"
 
 
-def load_df(df_tag):
+def _raw_load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
     index_column = DATABASE_INDEX_DICTIONARY[df_tag]
     if df_path.exists():
@@ -90,7 +90,7 @@ def load_df(df_tag):
     return df
 
 
-def save_df(df_tag, df: pandas.DataFrame):
+def _raw_save_df(df_tag, df: pandas.DataFrame):
     if not ROOT_DATA_PATH.is_dir():
         ROOT_DATA_PATH.mkdir()
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
@@ -99,37 +99,51 @@ def save_df(df_tag, df: pandas.DataFrame):
          header=True, index=True, index_label=DATABASE_INDEX_DICTIONARY[df_tag])
 
 
+def _decode_string_to_list(list_as_string):
+    nicknames_list = list_as_string.split(CSV_LIST_SEPARATOR)
+    if len(nicknames_list) == 0 and nicknames_list[0] == "":
+        nicknames_list = []
+    return nicknames_list
+
+
+def _encode_list_to_string(list_of_strings):
+    return CSV_LIST_SEPARATOR.join(list_of_strings)
+
+
 def get_players_df():
-    players_df = load_df(PLAYERS_DATASET_TAG)
-    players_df.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = players_df[PLAYER_DATABASE_NICKNAMES_COLUMN].fillna('')
-    return players_df
+    df_players = _raw_load_df(PLAYERS_DATASET_TAG)
+    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].fillna('')
+    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_decode_string_to_list )
+    return df_players
 
 
 def set_players_df(df_players):
-    save_df(PLAYERS_DATASET_TAG, df_players)
+    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_encode_list_to_string)
+    breakpoint()
+    _raw_save_df(PLAYERS_DATASET_TAG, df_players)
 
 
 def get_matches_df():
-    df_matches = load_df(MATCHES_DATASET_TAG)
+    df_matches = _raw_load_df(MATCHES_DATASET_TAG)
     df_matches.loc[:, MATCHES_DATABASE_DATETIME_COLUMN] = pandas.to_datetime(df_matches[MATCHES_DATABASE_DATETIME_COLUMN])
     return df_matches
 
 
 def set_matches_df(df_matches):
-    save_df(MATCHES_DATASET_TAG, df_matches)
+    _raw_save_df(MATCHES_DATASET_TAG, df_matches)
 
 
 def get_rating_changes_df():
-    return load_df(RATING_CHANGES_DATASET_TAG)
+    return _raw_load_df(RATING_CHANGES_DATASET_TAG)
 
 
 def set_rating_changes_df(df_rating_changes):
-    save_df(RATING_CHANGES_DATASET_TAG, df_rating_changes)
+    _raw_save_df(RATING_CHANGES_DATASET_TAG, df_rating_changes)
 
 
 def add_from_records(df_tag, records: List[dict], df, persist_into_database=True):
     if df is None:
-        df = load_df(df_tag)
+        df = _raw_load_df(df_tag)
     index_col = DATABASE_INDEX_DICTIONARY[df_tag]
     max_id = df.index.max() if len(df.index) > 0 else 0
     new_index = []
@@ -149,7 +163,7 @@ def add_from_records(df_tag, records: List[dict], df, persist_into_database=True
     df_new.fillna("", inplace=True)
     df = pandas.concat([df, df_new], axis=0)
     if persist_into_database:
-        save_df(df_tag, df)
+        _raw_save_df(df_tag, df)
     return df, df_new
 
 
@@ -296,7 +310,8 @@ def adjust_player_ratings(match_record, df_players=None):
 
 def player_search_vector_for_query(df_players, query_string):
     keywords_per_player = df_players.apply(
-        lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN].split(CSV_LIST_SEPARATOR) + [player_row[PLAYER_DATABASE_NAME_COLUMN]], axis=1)
+        lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN] + [player_row[PLAYER_DATABASE_NAME_COLUMN]], axis=1)
+    breakpoint()
     edlib_distances = keywords_per_player.apply(
         lambda keywords: min([editdistance.eval(keyword.lower(), query_string.lower()) for keyword in keywords])
     )
@@ -325,6 +340,7 @@ def _match_queries_to_player_ids(df_players, queries):
         else:
             id_to_match = get_match_from_search_vector(search_vector)
         results[query] = id_to_match
+        breakpoint()
     return results
 
 def identify_players(identifiers, df_players=None):
