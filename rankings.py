@@ -514,7 +514,7 @@ def remove_players_command(identifiers, df_players=None):
         click.echo(f"{removed_players.to_markdown()}")
 
     if len(invalid_index_identifiers) > 0:
-        click.echo(f"No players with indices {invalid_index_identifiers} in the database")
+        click.echo(f"No players with ids {[int(index_identifier) for index_identifier in invalid_index_identifiers]} in the database")
     if len(unrecognized_identifiers) > 0:
         click.echo(f"Could not match identifiers {unrecognized_identifiers}")
     if len(undecided_identifiers) > 0:
