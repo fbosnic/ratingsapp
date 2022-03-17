@@ -409,7 +409,7 @@ def add_player_command(rating, name, nicknames):
     click.echo(df_new.to_markdown())
 
 
-def add_match_command(match_ids, args):
+def add_match_command(datetime, args):
     teams_spearator_index = None
     teams_spearator_string = None
     for index in range(len(args)):
@@ -485,6 +485,8 @@ def list_rating_changes_command(df_rating_changes=None):
 
 
 def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_players=None):
+    if home_goals < 0 or away_goals < 0:
+        click.echo("Home and away scores need to be non negative integers")
     if df_matches is None:
         df_matches = get_matches_df()
 
@@ -517,9 +519,25 @@ def remove_players_command(identifiers, df_players=None):
         click.echo(f"Multiple players matched identifiers {undecided_identifiers}. Please be more specific or match players by name or id instead")
 
 
-def remove_matches_command(match_ids, df_matches=None, is_ignore_warnings=False):
+def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None):
     if df_matches is None:
         df_matches = get_matches_df()
+
+    ids_to_remove_set = set()
+    indices_not_parsed = []
+    for id in match_ids:
+        if id == REMOVE_NONESSENTIAL_MATCHES_STRING:
+            is_essential = find_essential_matches_mask(df_matches)
+            ids_to_remove_set.update(df_matches.index[~is_essential])
+        elif str.isdigit(id):
+            ids_to_remove_set.add(int(id))
+        else:
+            indices_not_parsed.append(id)
+    if len(indices_not_parsed) > 0:
+        click.echo(f"Could not parse {indices_not_parsed} as match indices. Please use integers or '{REMOVE_NONESSENTIAL_MATCHES_STRING}'")
+        exit(-1515)
+    match_ids = [id for id in ids_to_remove_set]
+
     non_existing_ids, existing_ids = [[] for _ in range(2)]
     for id in match_ids:
         if id in df_matches.index:
@@ -600,23 +618,7 @@ def players(identifiers):
 @click.option("--ignore_warnings", "-i", "--ignore", "is_ignore_warnings", type=bool, default=False)
 @click.argument("match_ids", nargs=-1)
 def matches(match_ids, is_ignore_warnings):
-    indices_to_remove_set = set()
-    indices_not_parsed = []
-    df_matches = None
-    for id in match_ids:
-        if id == REMOVE_NONESSENTIAL_MATCHES_STRING:
-            df_matches = get_matches_df()
-            is_essential = find_essential_matches_mask(df_matches)
-            indices_to_remove_set.update(df_matches.index[~is_essential])
-        elif str.isdigit(id):
-            indices_to_remove_set.add(int(id))
-        else:
-            indices_not_parsed.append(id)
-    if len(indices_not_parsed) > 0:
-        click.echo(f"Could not parse {indices_not_parsed} as match indices. Please use integers or '{REMOVE_NONESSENTIAL_MATCHES_STRING}'")
-        exit(-1515)
-    remove_matches_command([e for e in indices_to_remove_set], df_matches=df_matches, is_ignore_warnings=is_ignore_warnings)
-
+    remove_matches_command(match_ids, is_ignore_warnings)
 
 @rankings.group(name="list")
 def list():
@@ -669,7 +671,7 @@ def match(match_id, column_name, new_value):
 @click.argument("players", nargs=-1)
 def draft(team_size, players):
     '''Separates players into two teams of approximate same rating. Takes names of players as arguments.'''
-    pass
+    click.echo("Not implemented!")
 
 
 @rankings.command()
@@ -679,8 +681,6 @@ def draft(team_size, players):
 def score(match_id, home_score, away_score):
     '''Adds score to one of the non-scored matches and updates rankings of all players participating. '''\
     '''Takes the score for first ("home") and second ("away") team as arguments.'''
-    if home_score < 0 or away_score < 0:
-        click.echo("Home and away scores need to be non negative integers")
     score_match_command(match_id, home_score, away_score)
 
 
