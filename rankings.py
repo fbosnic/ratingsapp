@@ -354,6 +354,8 @@ def identify_players(identifiers, df_players=None):
     return identification_dict
 
 def remove_players(identifiers, df_players=None):
+    if df_players is None:
+        df_players = get_players_df()
     identification_dict = identify_players(identifiers, df_players)
 
     ids_to_remove, invalid_index_identifiers, unrecognized_identifiers, undecided_identifiers = [[] for _ in range(4)]
@@ -385,7 +387,7 @@ def find_essential_matches_mask(df_matches):
 def remove_matches(match_ids, df_matches=None, is_remove_essential=False, is_persist_into_database=True):
     if df_matches is None:
         df_matches = get_matches_df()
-    assert all([id in df_matches.index])
+    assert all([id in df_matches.index for id in match_ids])
 
     df_removed = df_matches.loc[match_ids].copy()
     if not is_remove_essential:
