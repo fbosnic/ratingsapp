@@ -119,7 +119,6 @@ def get_players_df():
 
 def set_players_df(df_players):
     df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_encode_list_to_string)
-    breakpoint()
     _raw_save_df(PLAYERS_DATASET_TAG, df_players)
 
 
@@ -141,9 +140,30 @@ def set_rating_changes_df(df_rating_changes):
     _raw_save_df(RATING_CHANGES_DATASET_TAG, df_rating_changes)
 
 
+_DF_TAG_TP_LOAD_FUNCTION = {
+    PLAYERS_DATASET_TAG: get_players_df,
+    MATCHES_DATASET_TAG: get_matches_df,
+    RATING_CHANGES_DATASET_TAG: get_rating_changes_df,
+}
+
+_DF_TAG_TO_SAVE_FUNCTION = {
+    PLAYERS_DATASET_TAG: set_players_df,
+    MATCHES_DATASET_TAG: set_matches_df,
+    RATING_CHANGES_DATASET_TAG: set_rating_changes_df,
+}
+
+
+def load_df(df_tag):
+    return _DF_TAG_TP_LOAD_FUNCTION[df_tag]()
+
+
+def save_df(df_tag, df):
+    return _DF_TAG_TO_SAVE_FUNCTION[df_tag](df)
+
+
 def add_from_records(df_tag, records: List[dict], df, persist_into_database=True):
     if df is None:
-        df = _raw_load_df(df_tag)
+        df = load_df(df_tag)
     index_col = DATABASE_INDEX_DICTIONARY[df_tag]
     max_id = df.index.max() if len(df.index) > 0 else 0
     new_index = []
@@ -160,10 +180,9 @@ def add_from_records(df_tag, records: List[dict], df, persist_into_database=True
         new_index.append(record[index_col])
 
     df_new = pandas.DataFrame.from_records(records, index=index_col)
-    df_new.fillna("", inplace=True)
     df = pandas.concat([df, df_new], axis=0)
     if persist_into_database:
-        _raw_save_df(df_tag, df)
+        save_df(df_tag, df)
     return df, df_new
 
 
@@ -311,7 +330,6 @@ def adjust_player_ratings(match_record, df_players=None):
 def player_search_vector_for_query(df_players, query_string):
     keywords_per_player = df_players.apply(
         lambda player_row: player_row[PLAYER_DATABASE_NICKNAMES_COLUMN] + [player_row[PLAYER_DATABASE_NAME_COLUMN]], axis=1)
-    breakpoint()
     edlib_distances = keywords_per_player.apply(
         lambda keywords: min([editdistance.eval(keyword.lower(), query_string.lower()) for keyword in keywords])
     )
@@ -340,7 +358,6 @@ def _match_queries_to_player_ids(df_players, queries):
         else:
             id_to_match = get_match_from_search_vector(search_vector)
         results[query] = id_to_match
-        breakpoint()
     return results
 
 def identify_players(identifiers, df_players=None):
