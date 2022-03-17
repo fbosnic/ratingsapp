@@ -433,7 +433,22 @@ def find_essential_matches_mask(df_matches):
     return is_match_essential
 
 
-def remove_matches(match_ids, df_matches=None, is_ignore_warnings=False, persist_into_database=True):
+def remove_matches(match_ids, df_matches=None, is_remove_essential=False, is_persist_into_database=True):
+    if df_matches is None:
+        df_matches = get_matches_df()
+    assert all([id in df_matches.index])
+
+    df_removed = df_matches.loc[match_ids].copy()
+    if not is_remove_essential:
+        assert all(~find_essential_matches_mask(df_removed))
+
+    df_matches.drop(match_ids, inplace=True)
+    if is_persist_into_database:
+        set_matches_df(df_matches)
+    return df_matches, df_removed
+
+
+def remove_matches_command(match_ids, df_matches=None, is_ignore_warnings=False):
     if df_matches is None:
         df_matches = get_matches_df()
     non_existing_ids, existing_ids = [[] for _ in range(2)]
@@ -445,29 +460,27 @@ def remove_matches(match_ids, df_matches=None, is_ignore_warnings=False, persist
     if non_existing_ids:
         click.echo(f"Indices {non_existing_ids} do not exist in the index.")
 
-    match_ids = existing_ids
-    df_to_remove = df_matches.loc[match_ids].copy()
+    df_to_remove = df_matches.loc[existing_ids].copy()
     is_essential = find_essential_matches_mask(df_to_remove)
     essential_indices = df_to_remove.index[is_essential]
     non_essential_indices = df_to_remove.index[~is_essential]
 
-    df_matches.drop(non_essential_indices, inplace=True)
-    if  len(essential_indices) > 0 or len(non_essential_indices) > 0:
-        if len(df_to_remove.index) > 0:
-            click.echo(f"Removed {len(non_essential_indices)} matches.")
-            click.echo(f"{df_to_remove.loc[non_essential_indices, :].to_markdown()}")
-        if not is_ignore_warnings and len(essential_indices):
-            _plural_suffix = "es" if len(essential_indices) > 2 else ""
-            click.echo(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
-            click.echo(f"{df_to_remove.loc[essential_indices, :].to_markdown()}")
-            if click.confirm("Are you sure you want to delete them?"):
-                df_matches.drop(essential_indices, inplace=True)
-                click.echo(f"Removed {len(essential_indices)} matches.")
-    else:
-        click.echo(f"No matches removed.")
+    ids_to_remove = non_essential_indices
+    if not is_ignore_warnings and len(essential_indices):
+        _plural_suffix = "es" if len(essential_indices) > 2 else ""
+        click.echo(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
+        click.echo(f"{df_to_remove.loc[essential_indices, :].to_markdown()}")
+        if click.confirm("Are you sure you want to delete them?"):
+            click.echo(f"Removed {len(essential_indices)} matches.")
+            ids_to_remove.extend(essential_indices)
 
-    if persist_into_database:
-        set_matches_df(df_matches)
+    if len(ids_to_remove) == 0:
+        click.echo(f"No matches removed.")
+    else:
+        df_matches, df_removed = remove_matches(ids_to_remove, df_matches, is_remove_essential=True, is_persist_into_database=True)
+        click.echo(f"Removed {len(df_removed.index)} matches.")
+        click.echo(f"{df_removed.to_markdown()}")
+
     return df_matches, df_to_remove
 
 
@@ -595,7 +608,7 @@ def matches(match_ids, is_ignore_warnings):
     if len(indices_not_parsed) > 0:
         click.echo(f"Could not parse {indices_not_parsed} as match indices. Please use integers or '{REMOVE_NONESSENTIAL_MATCHES_STRING}'")
         exit(-1515)
-    remove_matches([e for e in indices_to_remove_set], df_matches=df_matches, is_ignore_warnings=is_ignore_warnings)
+    remove_matches_command([e for e in indices_to_remove_set], df_matches=df_matches, is_ignore_warnings=is_ignore_warnings)
 
 
 @rankings.group(name="list")
