@@ -5,7 +5,6 @@ import click
 import editdistance
 from typing import List
 import math
-import itertools
 
 
 CSV_SEPARATOR = ";"
@@ -225,12 +224,24 @@ def add_matches(match_records: List[dict], df_matches=None, df_players=None, per
                 MATCHES_DATABASE_DATETIME_COLUMN: None
                 })
     df_matches, df_matches_new = add_from_records(MATCHES_DATASET_TAG, match_records, df_matches, persist_into_database=persist_into_databse)
-    _plural_suffix = "s" if len(df_matches_new) > 0 else ""
-    click.echo(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
-    click.echo(f"{df_matches_new.to_markdown()}")
+    return df_matches, df_matches_new
 
 
 def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=None):
+    if df_matches is None:
+        df_matches = get_matches_df()
+
+    assert not find_essential_matches_mask(df_matches).loc[match_id]
+
+    df_matches.loc[match_id, MATCHES_DATABASE_HOME_GOALS_COLUMN] = home_goals
+    df_matches.loc[match_id, MATCHES_DATABASE_AWAY_GOALS_COLUMN] = away_goals
+    match_record = df_matches.loc[match_id]
+    adjustments = adjust_player_ratings(match_record, df_players)
+    set_matches_df(df_matches)
+    return match_record, adjustments
+
+
+def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_players=None):
     if df_matches is None:
         df_matches = get_matches_df()
 
@@ -242,15 +253,9 @@ def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=No
         click.echo(f"Match with id {match_id} has already been scored and can't be scored again.")
         return
     else:
-        df_matches.loc[match_id, MATCHES_DATABASE_HOME_GOALS_COLUMN] = home_goals
-        df_matches.loc[match_id, MATCHES_DATABASE_AWAY_GOALS_COLUMN] = away_goals
-        match_record = df_matches.loc[match_id]
-        adjustments = adjust_player_ratings(match_record, df_players)
-        set_matches_df(df_matches)
-
-        click.echo(f"Updates score for match {match_id}: {home_goals}-{away_goals}.")
+        match_record, adjustments = score_match(match_id, home_goals, away_goals, df_matches, df_players)
+        click.echo(f"Updates score for match {match_id}: {match_record[MATCHES_DATABASE_HOME_GOALS_COLUMN]}-{match_record[MATCHES_DATABASE_AWAY_GOALS_COLUMN]}.")
         click.echo(f"Rating changes:\n{adjustments}")
-
 
 
 def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
@@ -542,7 +547,10 @@ def match(datetime, args):
     }
     if datetime is not None:
         match_record.update(pandas.to_datetime(datetime))
-    add_matches([match_record])
+    df_matches, df_matches_new = add_matches([match_record])
+    _plural_suffix = "s" if len(df_matches_new) > 0 else ""
+    click.echo(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
+    click.echo(f"{df_matches_new.to_markdown()}")
 
 
 @rankings.group()
@@ -646,7 +654,7 @@ def score(match_id, home_score, away_score):
     '''Takes the score for first ("home") and second ("away") team as arguments.'''
     if home_score < 0 or away_score < 0:
         click.echo("Home and away scores need to be non negative integers")
-    score_match(match_id, home_score, away_score)
+    score_match_command(match_id, home_score, away_score)
 
 
 if __name__ == "__main__":
