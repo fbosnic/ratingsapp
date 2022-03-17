@@ -311,19 +311,19 @@ def adjust_player_ratings(match_record, df_players=None):
     return adjustments
 
 
-def list_players(df_players=None):
+def list_players_command(df_players=None):
     if df_players is None:
         df_players = get_players_df()
     click.echo(df_players.to_markdown())
 
 
-def list_matches(df_matches=None):
+def list_matches_command(df_matches=None):
     if df_matches is None:
         df_matches = get_matches_df()
     click.echo(df_matches.to_markdown())
 
 
-def list_rating_changes(df_rating_changes=None):
+def list_rating_changes_command(df_rating_changes=None):
     if df_rating_changes is None:
         df_rating_changes = get_rating_changes_df()
     click.echo(df_rating_changes.to_markdown())
@@ -403,10 +403,17 @@ def remove_players(identifiers, df_players=None):
             ids_to_remove.append(id)
 
     removed_players = df_players.loc[ids_to_remove]
-    nr_removed = len(removed_players.index)
-    if nr_removed > 0:
+    if len(removed_players.index) > 0:
         df_players.drop(ids_to_remove, axis=0, inplace=True)
         set_players_df(df_players)
+    return removed_players, invalid_index_identifiers, unrecognized_identifiers, undecided_identifiers
+
+
+def remove_players_command(identifiers, df_players=None):
+    removed_players, invalid_index_identifiers, unrecognized_identifiers, undecided_identifiers = remove_players(identifiers, df_players)
+
+    nr_removed = len(removed_players.index)
+    if nr_removed > 0:
         click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
         click.echo(f"{removed_players.to_markdown()}")
 
@@ -564,7 +571,7 @@ def remove():
 def players(identifiers):
     '''Removes players from the database. Takes a list of identifiers which are matched with players' ids, '''\
     '''names and nicknames to find corresponding players.'''
-    remove_players(identifiers)
+    remove_players_command(identifiers)
 
 
 @remove.command(help=
@@ -601,19 +608,19 @@ def list():
 @click.option("--rating/--no-rating", default=False)
 def players(rating):
     '''Lists all active players.'''
-    list_players()
+    list_players_command()
 
 
 @list.command()
 def matches():
     '''Lists all matches.'''
-    list_matches()
+    list_matches_command()
 
 
 @list.command()
 def history():
     '''Lists all cahnges in ratings.'''
-    list_rating_changes()
+    list_rating_changes_command()
 
 
 @rankings.group(help='''Updates database.''')
