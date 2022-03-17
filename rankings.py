@@ -307,7 +307,7 @@ def is_search_pattern_precise(search_vector):
     return search_vector.min() <= PATTERN_MATCHING_MAX_DISTANCE
 
 def is_search_vector_exact(search_vector):
-    return (PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH * search_vector.min() > search_vector).sum() <= 1
+    return (PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH * search_vector.min() >= search_vector).sum() <= 1
 
 
 def get_match_from_search_vector(search_vector):
