@@ -113,7 +113,7 @@ def _encode_list_to_string(list_of_strings):
 def get_players_df():
     df_players = _raw_load_df(PLAYERS_DATASET_TAG)
     df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].fillna('')
-    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_decode_string_to_list )
+    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_decode_string_to_list)
     return df_players
 
 
@@ -435,7 +435,7 @@ def remove_matches(match_ids, df_matches=None, is_remove_essential=False, is_per
 def add_player_command(rating, name, nicknames):
     player_record = {
         PLAYER_DATABASE_NAME_COLUMN: name,
-        PLAYER_DATABASE_NICKNAMES_COLUMN: CSV_SEPARATOR.join([nick.lower() for nick in nicknames]),
+        PLAYER_DATABASE_NICKNAMES_COLUMN: [nick.lower() for nick in nicknames],
     }
     if rating > 0:
         player_record[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
