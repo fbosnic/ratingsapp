@@ -228,6 +228,29 @@ def add_matches(match_records: List[dict], df_matches=None, df_players=None, per
     click.echo(f"{df_matches_new.to_markdown()}")
 
 
+def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=None):
+    if df_matches is None:
+        df_matches = get_matches_df()
+
+    if match_id not in df_matches.index:
+        click.echo(f"Match with id {match_id} does not exist")
+        exit(-190)
+
+    if find_essential_matches_mask(df_matches).loc[match_id]:
+        click.echo(f"Match with id {match_id} has already been scored and can't be scored again.")
+        return
+    else:
+        df_matches.loc[match_id, MATCHES_DATABASE_HOME_GOALS_COLUMN] = home_goals
+        df_matches.loc[match_id, MATCHES_DATABASE_AWAY_GOALS_COLUMN] = away_goals
+        match_record = df_matches.loc[match_id]
+        adjustments = adjust_player_ratings(match_record, df_players)
+        set_matches_df(df_matches)
+
+        click.echo(f"Updates score for match {match_id}: {home_goals}-{away_goals}.")
+        click.echo(f"Rating changes:\n{adjustments}")
+
+
+
 def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
                               rating_diff_twice_as_good=DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER,
                               nr_1_0_wins_needed_to_get_twice_as_good=DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT):
@@ -607,12 +630,14 @@ def draft(team_size, players):
 
 @rankings.command()
 @click.option("--match_id", "-id", type=int, default=-1)
-@click.argument("home_score", nargs=1)
-@click.argument("away_score", nargs=1)
+@click.argument("home_score", nargs=1, type=int)
+@click.argument("away_score", nargs=1, type=int)
 def score(match_id, home_score, away_score):
     '''Adds score to one of the non-scored matches and updates rankings of all players participating. '''\
     '''Takes the score for first ("home") and second ("away") team as arguments.'''
-    pass
+    if home_score < 0 or away_score < 0:
+        click.echo("Home and away scores need to be non negative integers")
+    score_match(match_id, home_score, away_score)
 
 
 if __name__ == "__main__":
