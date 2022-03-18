@@ -334,7 +334,7 @@ def adjust_player_ratings(match_record, df_players=None):
     for _df, _adjustments in [(df_home_players, home_adjustments), (df_away_players, away_adjustments)]:
         update_multiple_player_ratings(_df.index, _adjustments)
 
-    adjustments = pandas.concat(home_adjustments, away_adjustments)
+    adjustments = pandas.concat([home_adjustments, away_adjustments])
     df_players.loc[adjustments.index, PLAYER_DATABASE_RATING_COLUMN] += adjustments
     set_players_df(df_players)
     return adjustments
