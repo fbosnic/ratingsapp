@@ -99,36 +99,49 @@ def _raw_save_df(df_tag, df: pandas.DataFrame):
          header=True, index=True, index_label=DATABASE_INDEX_DICTIONARY[df_tag])
 
 
-def _decode_string_to_list(list_as_string):
-    nicknames_list = list_as_string.split(CSV_LIST_SEPARATOR)
-    if len(nicknames_list) == 0 and nicknames_list[0] == "":
-        nicknames_list = []
-    return nicknames_list
+def _decode_into_list_of_strings(encoded_string):
+    list_of_strings = encoded_string.split(CSV_LIST_SEPARATOR)
+    if len(list_of_strings) == 0 and list_of_strings[0] == "":
+        list_of_strings = []
+    return list_of_strings
 
 
-def _encode_list_to_string(list_of_strings):
+def _encode_list_of_strings(list_of_strings):
     return CSV_LIST_SEPARATOR.join(list_of_strings)
+
+
+def _decode_into_list_of_ints(encoded_string):
+    return [int(element) for element in _decode_into_list_of_strings(encoded_string)]
+
+
+def _encode_list_of_ints(list_of_ints):
+    return _encode_list_of_strings([str(element) for element in list_of_ints])
 
 
 def get_players_df():
     df_players = _raw_load_df(PLAYERS_DATASET_TAG)
     df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].fillna('')
-    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_decode_string_to_list)
+    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_decode_into_list_of_strings)
     return df_players
 
 
 def set_players_df(df_players):
-    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_encode_list_to_string)
+    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_encode_list_of_strings)
     _raw_save_df(PLAYERS_DATASET_TAG, df_players)
 
 
 def get_matches_df():
     df_matches = _raw_load_df(MATCHES_DATASET_TAG)
     df_matches.loc[:, MATCHES_DATABASE_DATETIME_COLUMN] = pandas.to_datetime(df_matches[MATCHES_DATABASE_DATETIME_COLUMN])
+    for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]:
+        df_matches.loc[:, column_name] = df_matches[column_name].astype(str)
+        df_matches.loc[:, column_name] = df_matches[column_name].apply(_decode_into_list_of_ints)
     return df_matches
 
 
 def set_matches_df(df_matches):
+    for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]:
+        df_matches.loc[:, column_name] = df_matches[column_name].apply(_encode_list_of_ints)
     _raw_save_df(MATCHES_DATASET_TAG, df_matches)
 
 
