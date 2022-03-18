@@ -332,7 +332,7 @@ def adjust_player_ratings(match_record, df_players=None):
 
     df_home_players, df_away_players = [
         df_players.loc[match_record[column_name]]
-        for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN]]
+        for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]]
 
     total_home_rating, total_away_rating = [_df[PLAYER_DATABASE_RATING_COLUMN].mean() for _df in [df_home_players, df_away_players]]
     home_goals, away_goals = [match_record[score_column] for score_column in [MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN]]
