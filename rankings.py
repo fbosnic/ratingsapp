@@ -8,7 +8,7 @@ import math
 
 
 CSV_SEPARATOR = ";"
-CSV_LIST_SEPARATOR = "<!>"
+CSV_LIST_SEPARATOR = "|"
 
 PLAYERS_DATASET_TAG = "df_players"
 MATCHES_DATASET_TAG = "df_matches"
