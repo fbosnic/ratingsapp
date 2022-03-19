@@ -83,7 +83,7 @@ def _raw_load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
     index_column = DATABASE_INDEX_DICTIONARY[df_tag]
     if df_path.exists():
-        df = pandas.read_csv(DATABASE_CSV_PATH_DICTIONARY[df_tag], sep=CSV_SEPARATOR, index_col=index_column)
+        df = pandas.read_csv(DATABASE_CSV_PATH_DICTIONARY[df_tag], sep=CSV_SEPARATOR, index_col=index_column, dtype="str")
     else:
         df = pandas.DataFrame(
             columns=[index_column] + DATABASE_NON_INDEX_COLUMNS_DICTIONARY[df_tag])
@@ -119,17 +119,14 @@ def _encode_list_of_ints(list_of_ints):
     return _encode_list_of_strings([str(element) for element in list_of_ints])
 
 
-def _convert_string_column_to_int(string_series):
-    string_series = string_series.astype(int, errors="ignore")
-    string_series = string_series.apply(lambda element: element if isinstance(element, int) else None)
-    return string_series
-
-
 def get_players_df():
     df_players = _raw_load_df(PLAYERS_DATASET_TAG)
-    df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].fillna('')
+    df_players = df_players.astype({
+        PLAYER_DATABASE_NAME_COLUMN: str,
+        PLAYER_DATABASE_NICKNAMES_COLUMN: str,
+        PLAYER_DATABASE_RATING_COLUMN: pandas.Int64Dtype(),
+    })
     df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_decode_into_list_of_strings)
-    df_players.loc[:, PLAYER_DATABASE_RATING_COLUMN] = _convert_string_column_to_int(df_players[PLAYER_DATABASE_RATING_COLUMN])
     return df_players
 
 
@@ -140,12 +137,16 @@ def set_players_df(df_players):
 
 def get_matches_df():
     df_matches = _raw_load_df(MATCHES_DATASET_TAG)
-    df_matches = df_matches.astype(str)
-    df_matches.loc[:, MATCHES_DATABASE_DATETIME_COLUMN] = pandas.to_datetime(df_matches[MATCHES_DATABASE_DATETIME_COLUMN])
+    df_matches = df_matches.astype({
+        MATCHES_DATABASE_DATETIME_COLUMN: str,
+        MATCHES_DATABASE_HOME_TEAM_COLUMN: str,
+        MATCHES_DATABASE_AWAY_TEAM_COLUMN: str,
+        MATCHES_DATABASE_HOME_GOALS_COLUMN: pandas.Int64Dtype(),
+        MATCHES_DATABASE_AWAY_GOALS_COLUMN: pandas.Int64Dtype(),
+        }
+    )
     for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]:
         df_matches.loc[:, column_name] = df_matches[column_name].apply(_decode_into_list_of_ints)
-    for column_name in [MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN]:
-        df_matches.loc[:, column_name] = _convert_string_column_to_int(df_matches[column_name])
     return df_matches
 
 
@@ -157,7 +158,11 @@ def set_matches_df(df_matches):
 
 def get_rating_changes_df():
     df_rating_changes = _raw_load_df(RATING_CHANGES_DATASET_TAG)
-    df_rating_changes.loc[:, RATING_CHANGES_RATING_CHANGE_COLUMN] = _convert_string_column_to_int(df_rating_changes[RATING_CHANGES_RATING_CHANGE_COLUMN])
+    df_rating_changes = df_rating_changes.astype({
+        RATING_CHANGES_DATABASE_DATETIME_COLUMN: str,
+        RATING_CHANGES_RATING_CHANGE_COLUMN: pandas.Int64Dtype(),
+    })
+    df_rating_changes[RATING_CHANGES_DATABASE_DATETIME_COLUMN] = pandas.to_datetime(df_rating_changes[RATING_CHANGES_DATABASE_DATETIME_COLUMN])
     return df_rating_changes
 
 
