@@ -298,6 +298,7 @@ def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=No
 
     df_matches.loc[match_id, MATCHES_DATABASE_HOME_GOALS_COLUMN] = home_goals
     df_matches.loc[match_id, MATCHES_DATABASE_AWAY_GOALS_COLUMN] = away_goals
+    df_matches.loc[match_id, MATCHES_DATABASE_DATETIME_COLUMN] = datetime.now()
     match_record = df_matches.loc[match_id]
     adjustments = adjust_player_ratings(match_record, df_players)
     set_matches_df(df_matches)
