@@ -617,7 +617,7 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
     essential_indices = df_to_remove.index[is_essential]
     non_essential_indices = df_to_remove.index[~is_essential]
 
-    ids_to_remove = non_essential_indices
+    ids_to_remove = [id for id in non_essential_indices]
     if not is_ignore_warnings and len(essential_indices):
         _plural_suffix = "es" if len(essential_indices) > 2 else ""
         click.echo(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
