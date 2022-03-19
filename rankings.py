@@ -312,22 +312,23 @@ def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
     home_win_prob = 1 / (1 + _intermediate_exp)
     away_win_prob = 1 - home_win_prob
 
+    SCALED_GRADIENT_EQUAL_PLAYERS = 1 / 2
+
     if home_goals > away_goals:
-        home_gradient = away_win_prob
-        away_gradient = -away_win_prob
+        home_scaled_gradient = away_win_prob
+        away_scaled_gradient = -away_win_prob
     elif home_goals == away_goals:
-        home_gradient = (away_win_prob - home_win_prob) / 2
-        away_gradient = (home_win_prob - away_win_prob) / 2
+        home_scaled_gradient = (away_win_prob - home_win_prob) / 2
+        away_scaled_gradient = (home_win_prob - away_win_prob) / 2
     elif home_goals < away_goals:
-        home_gradient = -home_win_prob
-        away_gradient = home_win_prob
-    home_gradient *= exponent_scale_factor
-    away_gradient *= exponent_scale_factor
+        home_scaled_gradient = -home_win_prob
+        away_scaled_gradient = home_win_prob
 
     score_modifier = min(3, abs(home_goals - away_goals))
-    rating_adjustment_modifier = rating_diff_twice_as_good / nr_1_0_wins_needed_to_get_twice_as_good
+    rating_adjustment_modifier = (rating_diff_twice_as_good / 2) / nr_1_0_wins_needed_to_get_twice_as_good / SCALED_GRADIENT_EQUAL_PLAYERS
     home_rating_adjustment, away_rating_adjustment = [
-        round_rating(gradient * rating_adjustment_modifier * score_modifier) for gradient in [home_gradient, away_gradient]]
+        round_rating(gradient * rating_adjustment_modifier * score_modifier) for gradient in [home_scaled_gradient, away_scaled_gradient]]
+    breakpoint()
     return home_rating_adjustment, away_rating_adjustment
 
 
@@ -345,8 +346,8 @@ def adjust_player_ratings(match_record, df_players=None):
     home_rating_adjustment, away_rating_adjustment = compute_rating_adjustment(total_home_rating, total_away_rating, home_goals, away_goals)
 
     home_adjustments, away_adjustments = [
-        df_home_players.apply(lambda _: rating_adjustment, axis=1)
-        for rating_adjustment in [home_rating_adjustment, away_rating_adjustment]]
+        _df.apply(lambda _: rating_adjustment, axis=1)
+        for _df, rating_adjustment in [(df_home_players, home_rating_adjustment), (df_away_players, away_rating_adjustment)]]
 
     for _df, _adjustments in [(df_home_players, home_adjustments), (df_away_players, away_adjustments)]:
         update_multiple_player_ratings(_df.index, _adjustments)
