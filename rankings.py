@@ -270,12 +270,6 @@ def add_matches(match_records: List[dict], df_matches=None, df_players=None, per
         assert len(away_team_ids) == len(away_team_ids)
         assert not any([id in away_team_ids for id in home_team_ids])
 
-        match_record.update({
-            column: CSV_LIST_SEPARATOR.join([f"{id}" for id in team_ids])
-            for column, team_ids in [
-                (MATCHES_DATABASE_HOME_TEAM_COLUMN, home_team_ids),
-                (MATCHES_DATABASE_AWAY_TEAM_COLUMN, away_team_ids)]
-                })
         if MATCHES_DATABASE_HOME_GOALS_COLUMN in match_record and MATCHES_DATABASE_AWAY_GOALS_COLUMN in match_record:
             if MATCHES_DATABASE_DATETIME_COLUMN not in match_record:
                 match_record[MATCHES_DATABASE_DATETIME_COLUMN] = datetime.now()
@@ -329,7 +323,6 @@ def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
     rating_adjustment_modifier = (rating_diff_twice_as_good / 2) / nr_1_0_wins_needed_to_get_twice_as_good / SCALED_GRADIENT_EQUAL_PLAYERS
     home_rating_adjustment, away_rating_adjustment = [
         round_rating(gradient * rating_adjustment_modifier * score_modifier) for gradient in [home_scaled_gradient, away_scaled_gradient]]
-    breakpoint()
     return home_rating_adjustment, away_rating_adjustment
 
 
