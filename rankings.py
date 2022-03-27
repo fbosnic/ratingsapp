@@ -488,6 +488,12 @@ def find_teams_separation_with_small_ratings_difference(player_ids, df_players=N
     return selected_home_team, selected_away_team, mean_rating_disbalance_to_optimal, selection_probability
 
 
+def find_current_average_rating_of_team(player_ids, df_players=None):
+    if df_players is None:
+        df_players = get_players_df()
+    return df_players.loc[player_ids, PLAYER_DATABASE_RATING_COLUMN].mean()
+
+
 def is_search_pattern_precise(search_vector):
     return search_vector.min() <= PATTERN_MATCHING_MAX_DISTANCE
 
@@ -698,7 +704,19 @@ def draft_command(player_identifiers):
     for identifier, player_id in identifiers_dict.items():
         assert player_id in df_players.index
 
-    home_team_ids, away_team_ids, rating_disbalance_to_optimal, selction_probability = find_teams_separation_with_small_ratings_difference(identifiers_dict.values(), df_players)
+    home_team_ids, away_team_ids, rating_disbalance_to_optimal, selection_probability = find_teams_separation_with_small_ratings_difference(identifiers_dict.values(), df_players)
+    suggested_match = {
+        MATCHES_DATABASE_HOME_TEAM_COLUMN: builtins.list(home_team_ids),
+        MATCHES_DATABASE_AWAY_TEAM_COLUMN: builtins.list(away_team_ids)
+        }
+    _, df_new_match = add_matches([suggested_match])
+
+    home_mean_rating, away_mean_rating = [find_current_average_rating_of_team(team_ids) for team_ids in [home_team_ids, away_team_ids]]
+    click.echo(f"Separated players into two teams with approximate same ratings, {home_mean_rating:.1f} vs. {away_mean_rating:.1f}." \
+        f" This division is {rating_disbalance_to_optimal:.1f} rating units from optimal. The probability of selecting equal or worse divisions" \
+        f" was {selection_probability * 100:.1f}%.\n"
+        f"The following match was added. You can score this match using the 'score' command which will update the rating of all players involved.")
+    click.echo(df_new_match.to_markdown())
 
 
 def remove_players_command(identifiers, df_players=None):
