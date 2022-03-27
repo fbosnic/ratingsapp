@@ -440,6 +440,7 @@ def find_teams_separation_with_small_ratings_difference(player_ids, df_players=N
     assert len(player_ids) % 2 == 0
     assert len(player_ids) < 13 # TODO the algorithm below is expected to take too long
     team_size = len(player_ids) // 2
+    assert team_size > 0
     if df_players is None:
         df_players = get_players_df()
     ratings_pd_series = df_players.loc[player_ids, PLAYER_DATABASE_RATING_COLUMN]
@@ -697,8 +698,12 @@ def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_pl
 
 
 def draft_command(player_identifiers):
+    if len(player_identifiers) == 0:
+        click.echo("Please specify available players in arguments. These players will be separated into two teams of approximatly equal rating.")
+        exit(-9184)
     if len(player_identifiers) % 2 == 1:
-        click.echo("The number of players needs to be even so that they can be split into two teams")
+        click.echo("The number of players needs to be even so that they can be split into two teams.")
+        exit(-331)
     df_players = get_players_df()
     identifiers_dict = identify_players(player_identifiers, df_players)
     for identifier, player_id in identifiers_dict.items():
