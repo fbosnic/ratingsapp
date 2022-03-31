@@ -191,6 +191,15 @@ def save_df(df_tag, df):
     return _DF_TAG_TO_SAVE_FUNCTION[df_tag](df)
 
 
+def display_players_df(df_players: pandas.DataFrame, is_sort_by_rating=False, is_display_nicknames=True) -> str:
+    df_to_display = df_players
+    if not is_display_nicknames:
+        df_to_display = df_to_display.drop(PLAYER_DATABASE_NICKNAMES_COLUMN, axis=1)
+    if is_sort_by_rating:
+        df_to_display = df_to_display.sort_values(by=PLAYER_DATABASE_RATING_COLUMN, ascending=False)
+    return df_to_display.to_markdown()
+
+
 def add_from_records(df_tag, records: List[dict], df, persist_into_database=True):
     if df is None:
         df = load_df(df_tag)
@@ -466,7 +475,7 @@ def add_player_command(rating, name, nicknames):
         player_record[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
     df, df_new = add_players([player_record])
     click.echo("Added the following player")
-    click.echo(df_new.to_markdown())
+    click.echo(display_players_df(df_new))
 
 
 def add_match_command(datetime, args):
@@ -529,7 +538,7 @@ def add_match_command(datetime, args):
 def list_players_command(df_players=None):
     if df_players is None:
         df_players = get_players_df()
-    click.echo(df_players.to_markdown())
+    click.echo(display_players_df(df_players))
 
 
 def list_matches_command(df_matches=None):
@@ -569,7 +578,7 @@ def remove_players_command(identifiers, df_players=None):
     nr_removed = len(removed_players.index)
     if nr_removed > 0:
         click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
-        click.echo(f"{removed_players.to_markdown()}")
+        click.echo(f"{display_players_df(removed_players)}")
 
     if len(invalid_index_identifiers) > 0:
         click.echo(f"No players with ids {[int(index_identifier) for index_identifier in invalid_index_identifiers]} in the database")
@@ -629,6 +638,11 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
         click.echo(f"{df_removed.to_markdown()}")
 
     return df_matches, df_to_remove
+
+
+def show_ratings():
+    df_players = get_players_df()
+    click.echo(display_players_df(df_players, True, is_display_nicknames=False))
 
 
 @click.group()
@@ -742,6 +756,12 @@ def score(match_id, home_score, away_score):
     '''Adds score to one of the non-scored matches and updates rankings of all players participating. '''\
     '''Takes the score for first ("home") and second ("away") team as arguments.'''
     score_match_command(match_id, home_score, away_score)
+
+
+@rankings.command()
+def ratings():
+    '''Show ratings leaderboard'''
+    show_ratings()
 
 
 if __name__ == "__main__":
