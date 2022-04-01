@@ -697,7 +697,7 @@ def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_pl
         display_string_to_user(f"Rating changes:\n{adjustments}")
 
 
-def draft_command(player_identifiers):
+def draft_command(player_identifiers, is_discard_match):
     if len(player_identifiers) == 0:
         click.echo("Please specify available players in arguments. These players will be separated into two teams of approximatly equal rating.")
         exit(-9184)
@@ -714,13 +714,17 @@ def draft_command(player_identifiers):
         MATCHES_DATABASE_HOME_TEAM_COLUMN: builtins.list(home_team_ids),
         MATCHES_DATABASE_AWAY_TEAM_COLUMN: builtins.list(away_team_ids)
         }
-    _, df_new_match = add_matches([suggested_match])
+
+    _, df_new_match = add_matches([suggested_match], persist_into_databse=(not is_discard_match))
+    match_stored_description = "The match below has not been stored because '--discard' flag was used." if is_discard_match \
+        else "The following match has been added. You can score this match using the 'score' command which will update the rating" \
+            " of all players involved."
 
     home_mean_rating, away_mean_rating = [find_current_average_rating_of_team(team_ids) for team_ids in [home_team_ids, away_team_ids]]
-    click.echo(f"Separated players into two teams with approximate same ratings, {home_mean_rating:.1f} vs. {away_mean_rating:.1f}." \
-        f" This division is {rating_disbalance_to_optimal:.1f} rating units from optimal. The probability of selecting equal or worse divisions" \
+    click.echo(f"Separated players into two teams with approximate same ratings, {home_mean_rating:.1f} vs. {away_mean_rating:.1f}."
+        f"This division is {rating_disbalance_to_optimal:.1f} rating units from optimal. The probability of selecting equal or worse divisions"
         f" was {selection_probability * 100:.1f}%.\n"
-        f"The following match was added. You can score this match using the 'score' command which will update the rating of all players involved.")
+        f"{match_stored_description}")
     click.echo(df_new_match.to_markdown())
 
 
@@ -893,10 +897,11 @@ def match(match_id, column_name, new_value):
 
 
 @rankings.command()
+@click.option("--discard", "is_discard_match", is_flag=True, default=False, help="generated match will not be stored")
 @click.argument("player_identifiers", nargs=-1)
-def draft(player_identifiers):
+def draft(player_identifiers, is_discard_match):
     '''Separates players into two teams of approximate same rating. Takes names of players as arguments.'''
-    draft_command(player_identifiers)
+    draft_command(player_identifiers, is_discard_match)
 
 
 @rankings.command()
