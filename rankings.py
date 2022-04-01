@@ -6,6 +6,7 @@ import editdistance
 from typing import List
 import math
 from rich.console import Console as RichConsole
+from rich.table import Table as RichTable
 
 RICH_CONSOLE = RichConsole()
 
@@ -150,6 +151,7 @@ def get_matches_df():
         MATCHES_DATABASE_AWAY_GOALS_COLUMN: pandas.Int64Dtype(),
         }
     )
+    df_matches[MATCHES_DATABASE_DATETIME_COLUMN] = pandas.to_datetime(df_matches[MATCHES_DATABASE_DATETIME_COLUMN])
     for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]:
         df_matches.loc[:, column_name] = df_matches[column_name].apply(_decode_into_list_of_ints)
     return df_matches
@@ -203,6 +205,49 @@ def display_players_df(df_players: pandas.DataFrame, is_sort_by_rating=False, is
     if is_sort_by_rating:
         df_to_display = df_to_display.sort_values(by=PLAYER_DATABASE_RATING_COLUMN, ascending=False)
     return df_to_display.to_markdown()
+
+
+def _match_display_is_match_scored(match_row):
+    return all([not pandas.isnull(match_row[team_score_col]) for team_score_col in [MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN]])
+
+
+def _match_display_table_get_score_string(score, player_ids, df_players):
+    if pandas.isnull(score):
+        avg_rating = df_players.loc[player_ids, PLAYER_DATABASE_RATING_COLUMN].mean()
+        return f"{avg_rating}"
+    else:
+        return f"{score}"
+
+
+def display_matches_df(df_matches: pandas.DataFrame, df_players: pandas.DataFrame=None):
+    if df_players is None:
+        df_players = get_players_df()
+
+    player_id_to_name_map = {row_index: row[PLAYER_DATABASE_NAME_COLUMN] for row_index, row in df_players.iterrows()}
+
+    table = RichTable(show_lines=True)
+    table.add_column("Id", vertical="middle")
+    table.add_column("Date", vertical="middle")
+    table.add_column("Home team")
+    for _ in range(3):
+        table.add_column("", vertical="middle", justify="center")
+    table.add_column("Away team")
+
+    for row_index, row in df_matches.iterrows():
+        _date_string = "To play..." if pandas.isnull(row[MATCHES_DATABASE_DATETIME_COLUMN]) else f"{row[MATCHES_DATABASE_DATETIME_COLUMN].date()}"
+        _home_team_string, away_team_string = [
+            "\n".join([player_id_to_name_map[player_id] for player_id in row[team_column]])
+            for team_column in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]
+            ]
+        _home_score_string, _away_score_string = [
+            _match_display_table_get_score_string(row[team_goals_col], row[team_player_ids_col], df_players)
+            for team_goals_col, team_player_ids_col in zip(
+                [MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN],
+                [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN])
+            ]
+        _teams_separator = "-" if _match_display_is_match_scored(row) else "vs."
+        table.add_row(f"{row_index}", _date_string, _home_team_string, _home_score_string, _teams_separator, _away_score_string, away_team_string)
+    display_string_to_user(table)
 
 
 def add_from_records(df_tag, records: List[dict], df, persist_into_database=True):
@@ -549,7 +594,7 @@ def list_players_command(df_players=None):
 def list_matches_command(df_matches=None):
     if df_matches is None:
         df_matches = get_matches_df()
-    display_string_to_user(df_matches.to_markdown())
+    display_matches_df(df_matches)
 
 
 def list_rating_changes_command(df_rating_changes=None):
