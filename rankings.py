@@ -83,7 +83,7 @@ PATTERN_MATCHING_MULTIPLE_MATCHES ="MULTIPLE_MATCHES"
 PATTERN_MATCHING_MAX_DISTANCE = 3
 
 TEAM_SEPARTION_STRINGS = ["vs", "vs.", "against", "-", "<>", "<->", ":", "|"]
-REMOVE_NONESSENTIAL_MATCHES_STRING = "all"
+REMOVE_NONESSENTIAL_MATCHES_STRING = "non-scored"
 
 
 def display_string_to_user(string: str):
