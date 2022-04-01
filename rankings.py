@@ -79,6 +79,9 @@ TEAM_SEPARTION_STRINGS = ["vs", "vs.", "against", "-", "<>", "<->", ":", "|"]
 REMOVE_NONESSENTIAL_MATCHES_STRING = "all"
 
 
+def display_string_to_user(string: str):
+    click.echo(string)
+
 def _raw_load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
     index_column = DATABASE_INDEX_DICTIONARY[df_tag]
@@ -474,8 +477,8 @@ def add_player_command(rating, name, nicknames):
     if rating > 0:
         player_record[PLAYER_DATABASE_RATING_COLUMN] = round_rating(rating)
     df, df_new = add_players([player_record])
-    click.echo("Added the following player")
-    click.echo(display_players_df(df_new))
+    display_string_to_user("Added the following player")
+    display_string_to_user(display_players_df(df_new))
 
 
 def add_match_command(datetime, args):
@@ -484,13 +487,13 @@ def add_match_command(datetime, args):
     for index in range(len(args)):
         if args[index] in TEAM_SEPARTION_STRINGS:
             if teams_spearator_index is not None:
-                click.echo(f"Multiple teams separators. Found {teams_spearator_string} as argument "\
+                display_string_to_user(f"Multiple teams separators. Found {teams_spearator_string} as argument "\
                 f"{teams_spearator_index} and {args[index]} as arguments {index}")
                 exit(-331)
             else:
                 teams_spearator_index = index
     if teams_spearator_index is None:
-        click.echo(f"Could not find teams separator. Please seaparte players in the teams with {TEAM_SEPARTION_STRINGS[0]}")
+        display_string_to_user(f"Could not find teams separator. Please seaparte players in the teams with {TEAM_SEPARTION_STRINGS[0]}")
         exit(-1141)
     home_team_args = args[:teams_spearator_index]
     away_team_args = args[teams_spearator_index + 1:]
@@ -502,10 +505,10 @@ def add_match_command(datetime, args):
     if len(_no_matches) > 0 or len(_multiple_matches) > 0:
         if len(_no_matches) > 0:
             _plural_suffix = "s" if (len(_no_matches) > 1) else ""
-            click.echo(f"Could not match identifier{_plural_suffix} {' '.join(_no_matches)} to player name{_plural_suffix}.")
+            display_string_to_user(f"Could not match identifier{_plural_suffix} {' '.join(_no_matches)} to player name{_plural_suffix}.")
         if len(_multiple_matches) > 0:
             _plural_suffix = "s" if (len(_multiple_matches) > 1) else ""
-            click.echo(f"Found multiple players matching identifier{_plural_suffix} {' '.join(_multiple_matches)}.")
+            display_string_to_user(f"Found multiple players matching identifier{_plural_suffix} {' '.join(_multiple_matches)}.")
         exit(-6551)
 
     home_team_ids_set, away_team_ids_set = [
@@ -515,11 +518,11 @@ def add_match_command(datetime, args):
     duplicate_ids = [id for id in home_team_ids_set if id in away_team_ids_set]
     if len(duplicate_ids) > 0:
         _plural_suffix = "s" if len(duplicate_ids) > 0 else ""
-        click.echo(f"Clash, found player{_plural_suffix} {' '.join([str(id) for id in duplicate_ids])} in both home and away team")
+        display_string_to_user(f"Clash, found player{_plural_suffix} {' '.join([str(id) for id in duplicate_ids])} in both home and away team")
         exit(-192)
 
     if len(home_team_ids_set) != len(away_team_ids_set):
-        click.echo(f"Teams need to have the same number of unique players. Found {len(home_team_ids_set)} unique players for the home team and "\
+        display_string_to_user(f"Teams need to have the same number of unique players. Found {len(home_team_ids_set)} unique players for the home team and "\
             f"{len(away_team_ids_set)} for the away team")
         exit(-431)
 
@@ -531,45 +534,45 @@ def add_match_command(datetime, args):
         match_record.update(pandas.to_datetime(datetime))
     df_matches, df_matches_new = add_matches([match_record])
     _plural_suffix = "s" if len(df_matches_new) > 0 else ""
-    click.echo(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
-    click.echo(f"{df_matches_new.to_markdown()}")
+    display_string_to_user(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
+    display_string_to_user(f"{df_matches_new.to_markdown()}")
 
 
 def list_players_command(df_players=None):
     if df_players is None:
         df_players = get_players_df()
-    click.echo(display_players_df(df_players))
+    display_string_to_user(display_players_df(df_players))
 
 
 def list_matches_command(df_matches=None):
     if df_matches is None:
         df_matches = get_matches_df()
-    click.echo(df_matches.to_markdown())
+    display_string_to_user(df_matches.to_markdown())
 
 
 def list_rating_changes_command(df_rating_changes=None):
     if df_rating_changes is None:
         df_rating_changes = get_rating_changes_df()
-    click.echo(df_rating_changes.to_markdown())
+    display_string_to_user(df_rating_changes.to_markdown())
 
 
 def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_players=None):
     if home_goals < 0 or away_goals < 0:
-        click.echo("Home and away scores need to be non negative integers")
+        display_string_to_user("Home and away scores need to be non negative integers")
     if df_matches is None:
         df_matches = get_matches_df()
 
     if match_id not in df_matches.index:
-        click.echo(f"Match with id {match_id} does not exist")
+        display_string_to_user(f"Match with id {match_id} does not exist")
         exit(-190)
 
     if find_essential_matches_mask(df_matches).loc[match_id]:
-        click.echo(f"Match with id {match_id} has already been scored and can't be scored again.")
+        display_string_to_user(f"Match with id {match_id} has already been scored and can't be scored again.")
         return
     else:
         match_record, adjustments = score_match(match_id, home_goals, away_goals, df_matches, df_players)
-        click.echo(f"Updates score for match {match_id}: {match_record[MATCHES_DATABASE_HOME_GOALS_COLUMN]}-{match_record[MATCHES_DATABASE_AWAY_GOALS_COLUMN]}.")
-        click.echo(f"Rating changes:\n{adjustments}")
+        display_string_to_user(f"Updates score for match {match_id}: {match_record[MATCHES_DATABASE_HOME_GOALS_COLUMN]}-{match_record[MATCHES_DATABASE_AWAY_GOALS_COLUMN]}.")
+        display_string_to_user(f"Rating changes:\n{adjustments}")
 
 
 def remove_players_command(identifiers, df_players=None):
@@ -577,15 +580,15 @@ def remove_players_command(identifiers, df_players=None):
 
     nr_removed = len(removed_players.index)
     if nr_removed > 0:
-        click.echo(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
-        click.echo(f"{display_players_df(removed_players)}")
+        display_string_to_user(f"Removed {nr_removed} player{'s' if nr_removed > 1 else ''}:")
+        display_string_to_user(f"{display_players_df(removed_players)}")
 
     if len(invalid_index_identifiers) > 0:
-        click.echo(f"No players with ids {[int(index_identifier) for index_identifier in invalid_index_identifiers]} in the database")
+        display_string_to_user(f"No players with ids {[int(index_identifier) for index_identifier in invalid_index_identifiers]} in the database")
     if len(unrecognized_identifiers) > 0:
-        click.echo(f"Could not match identifiers {unrecognized_identifiers}")
+        display_string_to_user(f"Could not match identifiers {unrecognized_identifiers}")
     if len(undecided_identifiers) > 0:
-        click.echo(f"Multiple players matched identifiers {undecided_identifiers}. Please be more specific or match players by name or id instead")
+        display_string_to_user(f"Multiple players matched identifiers {undecided_identifiers}. Please be more specific or match players by name or id instead")
 
 
 def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None):
@@ -603,7 +606,7 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
         else:
             indices_not_parsed.append(id)
     if len(indices_not_parsed) > 0:
-        click.echo(f"Could not parse {indices_not_parsed} as match indices. Please use integers or '{REMOVE_NONESSENTIAL_MATCHES_STRING}'")
+        display_string_to_user(f"Could not parse {indices_not_parsed} as match indices. Please use integers or '{REMOVE_NONESSENTIAL_MATCHES_STRING}'")
         exit(-1515)
     match_ids = [id for id in ids_to_remove_set]
 
@@ -614,7 +617,7 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
         else:
             non_existing_ids.append(id)
     if non_existing_ids:
-        click.echo(f"Indices {non_existing_ids} do not exist in the index.")
+        display_string_to_user(f"Indices {non_existing_ids} do not exist in the index.")
 
     df_to_remove = df_matches.loc[existing_ids].copy()
     is_essential = find_essential_matches_mask(df_to_remove)
@@ -624,25 +627,25 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
     ids_to_remove = [id for id in non_essential_indices]
     if not is_ignore_warnings and len(essential_indices):
         _plural_suffix = "es" if len(essential_indices) > 2 else ""
-        click.echo(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
-        click.echo(f"{df_to_remove.loc[essential_indices, :].to_markdown()}")
+        display_string_to_user(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
+        display_string_to_user(f"{df_to_remove.loc[essential_indices, :].to_markdown()}")
         if click.confirm("Are you sure you want to delete them?"):
-            click.echo(f"Removed {len(essential_indices)} matches.")
+            display_string_to_user(f"Removed {len(essential_indices)} matches.")
             ids_to_remove.extend(essential_indices)
 
     if len(ids_to_remove) == 0:
-        click.echo(f"No matches removed.")
+        display_string_to_user(f"No matches removed.")
     else:
         df_matches, df_removed = remove_matches(ids_to_remove, df_matches, is_remove_essential=True, is_persist_into_database=True)
-        click.echo(f"Removed {len(df_removed.index)} matches.")
-        click.echo(f"{df_removed.to_markdown()}")
+        display_string_to_user(f"Removed {len(df_removed.index)} matches.")
+        display_string_to_user(f"{df_removed.to_markdown()}")
 
     return df_matches, df_to_remove
 
 
 def show_ratings():
     df_players = get_players_df()
-    click.echo(display_players_df(df_players, True, is_display_nicknames=False))
+    display_string_to_user(display_players_df(df_players, True, is_display_nicknames=False))
 
 
 @click.group()
@@ -721,7 +724,7 @@ def history():
 
 @rankings.group(help='''Updates database.''')
 def update():
-    click.echo("Not implemented!")
+    display_string_to_user("Not implemented!")
 
 
 @update.command(help='''Updates player data.''')
@@ -729,7 +732,7 @@ def update():
 @click.option("--column", "-c", type=click.Choice(PLAYER_DATABASE_NON_INDEX_COLUMNS, case_sensitive=False))
 @click.argument("new_value", nargs=1)
 def players(player_id, column_name, new_value):
-    click.echo("Not implemented!")
+    display_string_to_user("Not implemented!")
 
 
 @update.command(help='''Updates match data.''')
@@ -737,7 +740,7 @@ def players(player_id, column_name, new_value):
 @click.option("--column", "-c", type=click.Choice(MATCHES_DATABASE_NON_INDEX_COLUMNS, case_sensitive=False))
 @click.argument("new_value", nargs=1)
 def match(match_id, column_name, new_value):
-    click.echo("Not implemented!")
+    display_string_to_user("Not implemented!")
 
 
 @rankings.command()
@@ -745,7 +748,7 @@ def match(match_id, column_name, new_value):
 @click.argument("players", nargs=-1)
 def draft(team_size, players):
     '''Separates players into two teams of approximate same rating. Takes names of players as arguments.'''
-    click.echo("Not implemented!")
+    display_string_to_user("Not implemented!")
 
 
 @rankings.command()
