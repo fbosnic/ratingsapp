@@ -5,7 +5,9 @@ import click
 import editdistance
 from typing import List
 import math
+from rich.console import Console as RichConsole
 
+RICH_CONSOLE = RichConsole()
 
 CSV_SEPARATOR = ";"
 CSV_LIST_SEPARATOR = "|"
@@ -80,7 +82,7 @@ REMOVE_NONESSENTIAL_MATCHES_STRING = "all"
 
 
 def display_string_to_user(string: str):
-    click.echo(string)
+    RICH_CONSOLE.print(string)
 
 def _raw_load_df(df_tag):
     df_path = DATABASE_CSV_PATH_DICTIONARY[df_tag]
