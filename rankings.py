@@ -211,12 +211,13 @@ def _match_display_is_match_scored(match_row):
     return all([not pandas.isnull(match_row[team_score_col]) for team_score_col in [MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN]])
 
 
-def _match_display_table_get_score_string(score, player_ids, df_players):
-    if pandas.isnull(score):
-        avg_rating = df_players.loc[player_ids, PLAYER_DATABASE_RATING_COLUMN].mean()
-        return f"{avg_rating}"
+def _match_display_table_get_score_strings(df_players, home_score, away_score, home_player_ids, away_player_ids):
+    if pandas.isnull(home_score) or pandas.isnull(away_score):
+        home_avg_rating, away_avg_rating = [df_players.loc[player_ids, PLAYER_DATABASE_RATING_COLUMN].mean() for player_ids in [home_player_ids, away_player_ids]]
+        home_win_prob, away_win_prob = compute_win_probabilities(home_avg_rating, away_avg_rating, DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER)
+        return [f"{rating:.0f}\n({win_prob*100:.1f}%)" for rating, win_prob in [(home_avg_rating, home_win_prob), (away_avg_rating, away_win_prob)]]
     else:
-        return f"{score}"
+        return f"{home_score}", f"{away_score}"
 
 
 def display_matches_df(df_matches: pandas.DataFrame, df_players: pandas.DataFrame=None):
@@ -239,12 +240,9 @@ def display_matches_df(df_matches: pandas.DataFrame, df_players: pandas.DataFram
             "\n".join([player_id_to_name_map[player_id] for player_id in row[team_column]])
             for team_column in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]
             ]
-        _home_score_string, _away_score_string = [
-            _match_display_table_get_score_string(row[team_goals_col], row[team_player_ids_col], df_players)
-            for team_goals_col, team_player_ids_col in zip(
-                [MATCHES_DATABASE_HOME_GOALS_COLUMN, MATCHES_DATABASE_AWAY_GOALS_COLUMN],
-                [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN])
-            ]
+        _home_score_string, _away_score_string = _match_display_table_get_score_strings(
+            df_players, row[MATCHES_DATABASE_HOME_GOALS_COLUMN], row[MATCHES_DATABASE_AWAY_GOALS_COLUMN],
+            row[MATCHES_DATABASE_HOME_TEAM_COLUMN], row[MATCHES_DATABASE_AWAY_TEAM_COLUMN])
         _teams_separator = "-" if _match_display_is_match_scored(row) else "vs."
         table.add_row(f"{row_index}", _date_string, _home_team_string, _home_score_string, _teams_separator, _away_score_string, away_team_string)
     display_string_to_user(table)
@@ -358,13 +356,18 @@ def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=No
     return match_record, adjustments
 
 
-def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
-                              rating_diff_twice_as_good=DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER,
-                              nr_1_0_wins_needed_to_get_twice_as_good=DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT):
+def compute_win_probabilities(home_rating, away_rating, rating_diff_twice_as_good):
     exponent_scale_factor = math.log(2) / rating_diff_twice_as_good
     _intermediate_exp = math.exp((away_rating - home_rating) * exponent_scale_factor)
     home_win_prob = 1 / (1 + _intermediate_exp)
     away_win_prob = 1 - home_win_prob
+    return home_win_prob, away_win_prob
+
+
+def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
+                              rating_diff_twice_as_good=DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER,
+                              nr_1_0_wins_needed_to_get_twice_as_good=DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT):
+    home_win_prob, away_win_prob = compute_win_probabilities(home_rating, away_rating, rating_diff_twice_as_good)
 
     SCALED_GRADIENT_EQUAL_PLAYERS = 1 / 2
 
