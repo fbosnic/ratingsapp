@@ -843,7 +843,8 @@ def players(identifiers):
 
 
 @remove.command(help=
-    '''Removes matches specified by ids given through arguments from the database. You can use '''
+    f'''Removes matches specified by ids given through arguments from the database.
+    Use '{REMOVE_NONESSENTIAL_MATCHES_STRING}' instead of ids to remove all matches that have not been scored.'''
 )
 @click.option("--ignore_warnings", "-i", "--ignore", "is_ignore_warnings", type=bool, default=False)
 @click.argument("match_ids", nargs=-1)
