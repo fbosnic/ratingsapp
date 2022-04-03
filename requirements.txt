@@ -3,3 +3,4 @@ pandas
 click
 editdistance
 tabulate
+rich
