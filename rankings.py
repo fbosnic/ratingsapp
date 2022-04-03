@@ -657,7 +657,7 @@ def add_match_command(datetime, args):
     df_matches, df_matches_new = add_matches([match_record])
     _plural_suffix = "s" if len(df_matches_new) > 0 else ""
     display_string_to_user(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
-    display_string_to_user(f"{df_matches_new.to_markdown()}")
+    display_matches_df(df_matches_new, df_players)
 
 
 def list_players_command(df_players=None):
@@ -725,7 +725,7 @@ def draft_command(player_identifiers, is_discard_match):
         f"This division is {rating_disbalance_to_optimal:.1f} rating units from optimal. The probability of selecting equal or worse divisions"
         f" was {selection_probability * 100:.1f}%.\n"
         f"{match_stored_description}")
-    click.echo(df_new_match.to_markdown())
+    display_matches_df(df_new_match)
 
 
 def remove_players_command(identifiers, df_players=None):
@@ -781,7 +781,7 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
     if not is_ignore_warnings and len(essential_indices):
         _plural_suffix = "es" if len(essential_indices) > 2 else ""
         display_string_to_user(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
-        display_string_to_user(f"{df_to_remove.loc[essential_indices, :].to_markdown()}")
+        display_matches_df(df_to_remove.loc[essential_indices, :])
         if click.confirm("Are you sure you want to delete them?"):
             display_string_to_user(f"Removed {len(essential_indices)} matches.")
             ids_to_remove.extend(essential_indices)
@@ -791,7 +791,7 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
     else:
         df_matches, df_removed = remove_matches(ids_to_remove, df_matches, is_remove_essential=True, is_persist_into_database=True)
         display_string_to_user(f"Removed {len(df_removed.index)} matches.")
-        display_string_to_user(f"{df_removed.to_markdown()}")
+        display_matches_df(df_removed)
 
     return df_matches, df_to_remove
 
