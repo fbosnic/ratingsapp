@@ -356,6 +356,10 @@ def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=No
     return match_record, adjustments
 
 
+def compute_score_impact_on_rating(home_goals, away_goals):
+    return min(3, abs(home_goals - away_goals))
+
+
 def compute_win_probabilities(home_rating, away_rating, rating_diff_twice_as_good):
     exponent_scale_factor = math.log(2) / rating_diff_twice_as_good
     _intermediate_exp = math.exp((away_rating - home_rating) * exponent_scale_factor)
@@ -381,7 +385,7 @@ def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
         home_scaled_gradient = -home_win_prob
         away_scaled_gradient = home_win_prob
 
-    score_modifier = min(3, abs(home_goals - away_goals))
+    score_modifier = compute_score_impact_on_rating(home_goals, away_goals)
     rating_adjustment_modifier = (rating_diff_twice_as_good / 2) / nr_1_0_wins_needed_to_get_twice_as_good / SCALED_GRADIENT_EQUAL_PLAYERS
     home_rating_adjustment, away_rating_adjustment = [
         round_rating(gradient * rating_adjustment_modifier * score_modifier) for gradient in [home_scaled_gradient, away_scaled_gradient]]
