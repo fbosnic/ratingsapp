@@ -1,12 +1,15 @@
+import builtins
 from datetime import datetime
 from pathlib import Path
 import pandas
+import numpy
 import click
 import editdistance
 from typing import List
 import math
 from rich.console import Console as RichConsole
 from rich.table import Table as RichTable
+import itertools
 
 RICH_CONSOLE = RichConsole()
 
@@ -71,6 +74,7 @@ DEFAULT_INITIAL_PLAYER_RATING = 2000
 INITIAL_PLAYER_RATING_QUANTILE = 0.3
 DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER = 400
 DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT = 5
+DRAFTING_RATING_DIFFERENCE_TO_OPTIMAL_TO_BE_TWO_TIMES_UNLIKELY = 15
 
 PLAYER_IDENTIFICATION_NOT_IN_INDEX ="NOT_IN_INDEX"
 PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH = 1.5
@@ -79,7 +83,7 @@ PATTERN_MATCHING_MULTIPLE_MATCHES ="MULTIPLE_MATCHES"
 PATTERN_MATCHING_MAX_DISTANCE = 3
 
 TEAM_SEPARTION_STRINGS = ["vs", "vs.", "against", "-", "<>", "<->", ":", "|"]
-REMOVE_NONESSENTIAL_MATCHES_STRING = "all"
+REMOVE_NONESSENTIAL_MATCHES_STRING = "non-scored"
 
 
 def display_string_to_user(string: str):
@@ -423,6 +427,74 @@ def player_search_vector_for_query(df_players, query_string):
     return edlib_distances
 
 
+def _exchange_players(this_team, other_team, this_to_exchange, other_to_exchange):
+    return numpy.concatenate([
+        this_team[[id for id in range(len(this_team)) if id not in this_to_exchange]],
+        other_team[other_to_exchange]
+    ])
+
+
+def find_teams_separation_with_small_ratings_difference(player_ids, df_players=None):
+    _player_id_dtype = numpy.int32
+    player_ids = numpy.fromiter(player_ids, dtype=_player_id_dtype)
+    assert len(player_ids) % 2 == 0
+    assert len(player_ids) < 13 # TODO the algorithm below is expected to take too long
+    team_size = len(player_ids) // 2
+    assert team_size > 0
+    if df_players is None:
+        df_players = get_players_df()
+    ratings_pd_series = df_players.loc[player_ids, PLAYER_DATABASE_RATING_COLUMN]
+
+    initial_home_team = player_ids[ :team_size]
+    initial_away_team = player_ids[team_size: ]
+    initial_difference = ratings_pd_series.loc[initial_home_team].sum() - ratings_pd_series.loc[initial_away_team].sum()
+
+    # Given an initial team separation, any other team separation can be reached by making at most team_size/2 (rounded down) exchanges with the other team.
+    max_exchanges = team_size // 2
+    home_all_possible_exchanges, away_all_possible_exchanges = [], []
+    all_rating_differences = []
+    for nr_exchanges in range(max_exchanges + 1):
+        for home_exchanges in itertools.combinations(range(team_size), nr_exchanges):
+            for away_exchanges in itertools.combinations(range(team_size), nr_exchanges):
+                home_exchanges = builtins.list(home_exchanges)
+                away_exchanges = builtins.list(away_exchanges)
+                home_exchange_rating, away_exchange_rating = [
+                    ratings_pd_series.loc[initial[builtins.list(exchanges)]].sum() for initial, exchanges in [
+                        (initial_home_team, home_exchanges), (initial_away_team, away_exchanges)]
+                    ]
+                all_rating_differences.append(
+                    initial_difference - 2 * (home_exchange_rating - away_exchange_rating)
+                )
+                home_all_possible_exchanges.append(home_exchanges)
+                away_all_possible_exchanges.append(away_exchanges)
+
+    all_rating_differences = numpy.array(all_rating_differences) / team_size
+    _squared_and_scaled_differences = numpy.square(all_rating_differences / DRAFTING_RATING_DIFFERENCE_TO_OPTIMAL_TO_BE_TWO_TIMES_UNLIKELY)
+    logits = _squared_and_scaled_differences.min() - _squared_and_scaled_differences
+    probabilities = numpy.exp2(logits)
+    probabilities = probabilities / probabilities.sum()
+    distribution_function = numpy.cumsum(probabilities)
+
+    _random_uniform = numpy.random.random()
+    optimal_index = logits.argmax()
+    selected_index = numpy.argmax(_random_uniform < distribution_function)
+    selected_home_exchanges, selected_away_exchanges = [all_exchanges[selected_index] for all_exchanges in [home_all_possible_exchanges, away_all_possible_exchanges]]
+
+    selected_home_team = _exchange_players(initial_home_team, initial_away_team, selected_home_exchanges, selected_away_exchanges)
+    selected_away_team = _exchange_players(initial_away_team, initial_home_team, selected_away_exchanges, selected_home_exchanges)
+    _absolute_differences = numpy.absolute(all_rating_differences)
+    mean_rating_disbalance_to_optimal = _absolute_differences[selected_index] - _absolute_differences[optimal_index]
+    selection_probability = probabilities[_squared_and_scaled_differences >= _squared_and_scaled_differences[selected_index]].sum()
+
+    return selected_home_team, selected_away_team, mean_rating_disbalance_to_optimal, selection_probability
+
+
+def find_current_average_rating_of_team(player_ids, df_players=None):
+    if df_players is None:
+        df_players = get_players_df()
+    return df_players.loc[player_ids, PLAYER_DATABASE_RATING_COLUMN].mean()
+
+
 def is_search_pattern_precise(search_vector):
     return search_vector.min() <= PATTERN_MATCHING_MAX_DISTANCE
 
@@ -585,7 +657,7 @@ def add_match_command(datetime, args):
     df_matches, df_matches_new = add_matches([match_record])
     _plural_suffix = "s" if len(df_matches_new) > 0 else ""
     display_string_to_user(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
-    display_string_to_user(f"{df_matches_new.to_markdown()}")
+    display_matches_df(df_matches_new, df_players)
 
 
 def list_players_command(df_players=None):
@@ -623,6 +695,37 @@ def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_pl
         match_record, adjustments = score_match(match_id, home_goals, away_goals, df_matches, df_players)
         display_string_to_user(f"Updates score for match {match_id}: {match_record[MATCHES_DATABASE_HOME_GOALS_COLUMN]}-{match_record[MATCHES_DATABASE_AWAY_GOALS_COLUMN]}.")
         display_string_to_user(f"Rating changes:\n{adjustments}")
+
+
+def draft_command(player_identifiers, is_discard_match):
+    if len(player_identifiers) == 0:
+        click.echo("Please specify available players in arguments. These players will be separated into two teams of approximatly equal rating.")
+        exit(-9184)
+    if len(player_identifiers) % 2 == 1:
+        click.echo("The number of players needs to be even so that they can be split into two teams.")
+        exit(-331)
+    df_players = get_players_df()
+    identifiers_dict = identify_players(player_identifiers, df_players)
+    for identifier, player_id in identifiers_dict.items():
+        assert player_id in df_players.index
+
+    home_team_ids, away_team_ids, rating_disbalance_to_optimal, selection_probability = find_teams_separation_with_small_ratings_difference(identifiers_dict.values(), df_players)
+    suggested_match = {
+        MATCHES_DATABASE_HOME_TEAM_COLUMN: builtins.list(home_team_ids),
+        MATCHES_DATABASE_AWAY_TEAM_COLUMN: builtins.list(away_team_ids)
+        }
+
+    _, df_new_match = add_matches([suggested_match], persist_into_databse=(not is_discard_match))
+    match_stored_description = "The match below has not been stored because '--discard' flag was used." if is_discard_match \
+        else "The following match has been added. You can score this match using the 'score' command which will update the rating" \
+            " of all players involved."
+
+    home_mean_rating, away_mean_rating = [find_current_average_rating_of_team(team_ids) for team_ids in [home_team_ids, away_team_ids]]
+    click.echo(f"Separated players into two teams with approximate same ratings, {home_mean_rating:.1f} vs. {away_mean_rating:.1f}."
+        f"This division is {rating_disbalance_to_optimal:.1f} rating units from optimal. The probability of selecting equal or worse divisions"
+        f" was {selection_probability * 100:.1f}%.\n"
+        f"{match_stored_description}")
+    display_matches_df(df_new_match)
 
 
 def remove_players_command(identifiers, df_players=None):
@@ -678,7 +781,7 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
     if not is_ignore_warnings and len(essential_indices):
         _plural_suffix = "es" if len(essential_indices) > 2 else ""
         display_string_to_user(f"Removing following match{_plural_suffix} will damage the consistency of the database (it will not be possible to recreate all the data).")
-        display_string_to_user(f"{df_to_remove.loc[essential_indices, :].to_markdown()}")
+        display_matches_df(df_to_remove.loc[essential_indices, :])
         if click.confirm("Are you sure you want to delete them?"):
             display_string_to_user(f"Removed {len(essential_indices)} matches.")
             ids_to_remove.extend(essential_indices)
@@ -688,7 +791,7 @@ def remove_matches_command(match_ids, is_ignore_warnings=False, df_matches=None)
     else:
         df_matches, df_removed = remove_matches(ids_to_remove, df_matches, is_remove_essential=True, is_persist_into_database=True)
         display_string_to_user(f"Removed {len(df_removed.index)} matches.")
-        display_string_to_user(f"{df_removed.to_markdown()}")
+        display_matches_df(df_removed)
 
     return df_matches, df_to_remove
 
@@ -740,7 +843,8 @@ def players(identifiers):
 
 
 @remove.command(help=
-    '''Removes matches specified by ids given through arguments from the database. You can use '''
+    f'''Removes matches specified by ids given through arguments from the database.
+    Use '{REMOVE_NONESSENTIAL_MATCHES_STRING}' instead of ids to remove all matches that have not been scored.'''
 )
 @click.option("--ignore_warnings", "-i", "--ignore", "is_ignore_warnings", type=bool, default=False)
 @click.argument("match_ids", nargs=-1)
@@ -794,11 +898,11 @@ def match(match_id, column_name, new_value):
 
 
 @rankings.command()
-@click.option("--size", "-s", default=5)
-@click.argument("players", nargs=-1)
-def draft(team_size, players):
+@click.option("--discard", "is_discard_match", is_flag=True, default=False, help="generated match will not be stored")
+@click.argument("player_identifiers", nargs=-1)
+def draft(player_identifiers, is_discard_match):
     '''Separates players into two teams of approximate same rating. Takes names of players as arguments.'''
-    display_string_to_user("Not implemented!")
+    draft_command(player_identifiers, is_discard_match)
 
 
 @rankings.command()
