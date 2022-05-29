@@ -10,6 +10,7 @@ import math
 from rich.console import Console as RichConsole
 from rich.table import Table as RichTable
 import itertools
+import shutil
 
 RICH_CONSOLE = RichConsole()
 
@@ -21,6 +22,7 @@ MATCHES_DATASET_TAG = "df_matches"
 RATING_CHANGES_DATASET_TAG = "df_rating_changes"
 
 ROOT_DATA_PATH = Path(__file__).parent / "DATA"
+BACKUP_DATA_PATH = ROOT_DATA_PATH / "__backup"
 PLAYER_DATABASE_CSV_PATH = ROOT_DATA_PATH / "players.csv"
 MATCHES_DATABASE_CSV_PATH = ROOT_DATA_PATH  / "matches.csv"
 RATING_CHANGES_DATABASE_CSV_PATH = ROOT_DATA_PATH / "changes.csv"
@@ -75,6 +77,7 @@ INITIAL_PLAYER_RATING_QUANTILE = 0.3
 DEFAULT_RATING_DIFFERENCE_SO_THAT_ONE_PLAYER_WINS_TWICE_AS_OFTEN_THAN_THE_OTHER = 400
 DEFAULT_NR_1_0_WINS_TO_GET_TWICE_AS_GOOD_AS_OPPONENT = 5
 DRAFTING_RATING_DIFFERENCE_TO_OPTIMAL_TO_BE_TWO_TIMES_UNLIKELY = 15
+APPEARANCES_FRACTION_NEEDED_FOR_PLAYER_TO_BE_STANDARD = 0.2
 
 PLAYER_IDENTIFICATION_NOT_IN_INDEX ="NOT_IN_INDEX"
 PATTERN_MATCHING_SEPARATION_FACTOR_FOR_EXACT_MATCH = 1.5
@@ -596,6 +599,57 @@ def remove_matches(match_ids, df_matches=None, is_remove_essential=False, is_per
     return df_matches, df_removed
 
 
+def recompute_ratings(df_players=None, df_matches=None, df_rating_changes=None):
+    if df_players is None:
+        df_players = get_players_df()
+    if df_matches is None:
+        df_matches = get_matches_df()
+    if df_rating_changes is None:
+        df_rating_changes = get_rating_changes_df()
+
+    for dataset_path in [PLAYER_DATABASE_CSV_PATH, MATCHES_DATABASE_CSV_PATH, RATING_CHANGES_DATABASE_CSV_PATH]:
+        if not BACKUP_DATA_PATH.exists():
+            BACKUP_DATA_PATH.mkdir()
+        shutil.copy2(dataset_path, BACKUP_DATA_PATH / dataset_path.name)
+
+    df_rating_changes_recomputed = df_rating_changes[:0].copy()
+
+    all_players_appearing = pandas.concat(
+        [df_matches[col].explode() for col in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]],
+        axis=0
+        ).reset_index(drop=True)
+    nr_matches = len(df_matches.index)
+    appearences_per_player = all_players_appearing.value_counts()
+    standard_players = appearences_per_player.index[appearences_per_player > nr_matches * APPEARANCES_FRACTION_NEEDED_FOR_PLAYER_TO_BE_STANDARD].sort_values()
+    df_players_recomputed = df_players.loc[standard_players, :]
+    df_players_recomputed[PLAYER_DATABASE_RATING_COLUMN] = DEFAULT_INITIAL_PLAYER_RATING
+
+    set_rating_changes_df(df_rating_changes_recomputed)
+    for match_index,  match_row in df_matches.iterrows():
+        match_players = match_row[MATCHES_DATABASE_HOME_TEAM_COLUMN] + match_row[MATCHES_DATABASE_AWAY_TEAM_COLUMN]
+        non_standard = [player for player in match_players if player not in df_players_recomputed.index]
+        non_standard.sort()
+
+        player_records = []
+        for player_index, player_row in df_players.loc[non_standard, :].iterrows():
+            player_dict = player_row.to_dict()
+            player_dict[DATABASE_INDEX_DICTIONARY[PLAYERS_DATASET_TAG]] = player_index
+            del(player_dict[PLAYER_DATABASE_RATING_COLUMN])
+            player_records.append(player_dict)
+        if len(player_records) > 0:
+            df_players_recomputed, _ = add_players(player_records, df_players_recomputed, persist_into_database=False)
+        _, adjustments, df_players_recomputed, _ = score_match(
+            match_id=match_index,
+            home_goals=match_row[MATCHES_DATABASE_HOME_GOALS_COLUMN],
+            away_goals=match_row[MATCHES_DATABASE_AWAY_GOALS_COLUMN],
+            df_matches=df_matches,
+            df_players=df_players_recomputed,
+            allow_rescoring_of_matches=True,
+            persist_into_database=True
+            )
+    set_players_df(df_players_recomputed)
+
+
 def add_player_command(rating, name, nicknames):
     player_record = {
         PLAYER_DATABASE_NAME_COLUMN: name,
@@ -806,6 +860,10 @@ def show_ratings():
     display_string_to_user(display_players_df(df_players, True, is_display_nicknames=False))
 
 
+def recompute_ratings_command():
+    recompute_ratings()
+
+
 @click.group()
 def rankings():
     pass
@@ -924,6 +982,12 @@ def score(match_id, home_score, away_score):
 def ratings():
     '''Show ratings leaderboard'''
     show_ratings()
+
+
+@rankings.command()
+def recompute():
+    '''Recomputes rating from scratch taking into account all stored matches.'''
+    recompute_ratings_command()
 
 
 if __name__ == "__main__":
