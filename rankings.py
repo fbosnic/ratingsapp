@@ -141,6 +141,7 @@ def get_players_df():
 
 
 def set_players_df(df_players):
+    df_players = df_players.copy()
     df_players.loc[:, PLAYER_DATABASE_NICKNAMES_COLUMN] = df_players[PLAYER_DATABASE_NICKNAMES_COLUMN].apply(_encode_list_of_strings)
     _raw_save_df(PLAYERS_DATASET_TAG, df_players)
 
@@ -162,6 +163,7 @@ def get_matches_df():
 
 
 def set_matches_df(df_matches):
+    df_matches = df_matches.copy()
     for column_name in [MATCHES_DATABASE_HOME_TEAM_COLUMN, MATCHES_DATABASE_AWAY_TEAM_COLUMN]:
         df_matches.loc[:, column_name] = df_matches[column_name].apply(_encode_list_of_ints)
     _raw_save_df(MATCHES_DATASET_TAG, df_matches)
