@@ -286,14 +286,14 @@ def round_rating(rating):
         return round(rating)
 
 
-def update_multiple_player_ratings(player_ids, rating_changes):
+def update_multiple_player_ratings(player_ids, rating_changes, persist_into_database=True):
     UTC = datetime.now()
     rating_changes_records = [{
             RATING_CHANGES_PLAYER_ID_COLUMN: player_id,
             RATING_CHANGES_RATING_CHANGE_COLUMN: rating_change,
             RATING_CHANGES_DATABASE_DATETIME_COLUMN: UTC,
     } for player_id, rating_change in zip(player_ids, rating_changes)]
-    return add_from_records(RATING_CHANGES_DATASET_TAG, rating_changes_records, get_rating_changes_df())
+    return add_from_records(RATING_CHANGES_DATASET_TAG, rating_changes_records, get_rating_changes_df(), persist_into_database=persist_into_database)
 
 
 def update_player_rating(player_id, rating_changes):
@@ -315,7 +315,7 @@ def add_players(player_records: List[dict], df_players=None, persist_into_databa
             record[PLAYER_DATABASE_RATING_COLUMN] = initial_rating
 
     df , df_new_players = add_from_records(PLAYERS_DATASET_TAG, player_records, df_players, persist_into_database)
-    update_multiple_player_ratings(df_new_players.index, df_new_players[PLAYER_DATABASE_RATING_COLUMN])
+    update_multiple_player_ratings(df_new_players.index, df_new_players[PLAYER_DATABASE_RATING_COLUMN], persist_into_database=persist_into_database)
 
     return df, df_new_players
 
@@ -347,19 +347,21 @@ def add_matches(match_records: List[dict], df_matches=None, df_players=None, per
     return df_matches, df_matches_new
 
 
-def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=None):
+def score_match(match_id, home_goals, away_goals, df_matches=None, df_players=None, allow_rescoring_of_matches=False, persist_into_database=True):
     if df_matches is None:
         df_matches = get_matches_df()
 
-    assert not find_essential_matches_mask(df_matches).loc[match_id]
+    if not allow_rescoring_of_matches:
+        assert not find_essential_matches_mask(df_matches).loc[match_id]
 
     df_matches.loc[match_id, MATCHES_DATABASE_HOME_GOALS_COLUMN] = home_goals
     df_matches.loc[match_id, MATCHES_DATABASE_AWAY_GOALS_COLUMN] = away_goals
     df_matches.loc[match_id, MATCHES_DATABASE_DATETIME_COLUMN] = datetime.now()
     match_record = df_matches.loc[match_id]
-    adjustments = adjust_player_ratings(match_record, df_players)
-    set_matches_df(df_matches)
-    return match_record, adjustments
+    adjustments, df_players = adjust_player_ratings(match_record, df_players, persist_into_database=persist_into_database)
+    if persist_into_database:
+        set_matches_df(df_matches)
+    return match_record, adjustments, df_players, df_matches
 
 
 def compute_win_probabilities(home_rating, away_rating, rating_diff_twice_as_good):
@@ -394,7 +396,7 @@ def compute_rating_adjustment(home_rating, away_rating, home_goals, away_goals,
     return home_rating_adjustment, away_rating_adjustment
 
 
-def adjust_player_ratings(match_record, df_players=None):
+def adjust_player_ratings(match_record, df_players=None, persist_into_database=True):
     if df_players is None:
         df_players = get_players_df()
 
@@ -412,12 +414,13 @@ def adjust_player_ratings(match_record, df_players=None):
         for _df, rating_adjustment in [(df_home_players, home_rating_adjustment), (df_away_players, away_rating_adjustment)]]
 
     for _df, _adjustments in [(df_home_players, home_adjustments), (df_away_players, away_adjustments)]:
-        update_multiple_player_ratings(_df.index, _adjustments)
+        update_multiple_player_ratings(_df.index, _adjustments, persist_into_database=persist_into_database)
 
     adjustments = pandas.concat([home_adjustments, away_adjustments])
     df_players.loc[adjustments.index, PLAYER_DATABASE_RATING_COLUMN] += adjustments
-    set_players_df(df_players)
-    return adjustments
+    if persist_into_database is True:
+        set_players_df(df_players)
+    return adjustments, df_players
 
 
 def player_search_vector_for_query(df_players, query_string):
@@ -694,7 +697,7 @@ def score_match_command(match_id, home_goals, away_goals, df_matches=None, df_pl
         display_string_to_user(f"Match with id {match_id} has already been scored and can't be scored again.")
         return
     else:
-        match_record, adjustments = score_match(match_id, home_goals, away_goals, df_matches, df_players)
+        match_record, adjustments, _, _ = score_match(match_id, home_goals, away_goals, df_matches, df_players)
         display_string_to_user(f"Updates score for match {match_id}: {match_record[MATCHES_DATABASE_HOME_GOALS_COLUMN]}-{match_record[MATCHES_DATABASE_AWAY_GOALS_COLUMN]}.")
         display_string_to_user(f"Rating changes:\n{adjustments}")
 
