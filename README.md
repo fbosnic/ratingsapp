@@ -3,9 +3,10 @@ Console line app for self-updating rating system
 
 ### Installation
 
+Using pip
 ```
 python3 -m venv .venv
-pip install -r requirements.txt
+pip install -r requirements_pip_python38+.txt
 source .venv/bin/activate
 
 pip install -e .
@@ -15,6 +16,15 @@ pip install -e .
 2. Install all required packages in this new virtual env
 3. Activates this virtual env
 4. Installs the 'frank' package
+
+
+Using conda
+```
+conda env create --name ratings --file requirements_conda.yml
+conda activate ratings
+
+pip install -e .
+```
 
 ### Usage
 
