@@ -712,11 +712,12 @@ def add_match_command(datetime, args):
         MATCHES_DATABASE_AWAY_TEAM_COLUMN: [e for e in away_team_ids_set]
     }
     if datetime is not None:
-        match_record.update(pandas.to_datetime(datetime))
+        match_record[MATCHES_DATABASE_DATETIME_COLUMN] = pandas.to_datetime(datetime)
     df_matches, df_matches_new = add_matches([match_record])
     _plural_suffix = "s" if len(df_matches_new) > 0 else ""
     display_string_to_user(f"Added {len(df_matches_new.index)} match{_plural_suffix} to the database")
     display_matches_df(df_matches_new, df_players)
+    return df_matches_new.index
 
 
 def list_players_command(df_players=None):
